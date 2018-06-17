@@ -8,55 +8,12 @@ from datetime import timedelta, date
 from surprise import Reader, Dataset, SVD, evaluate
 import pickle
 from collections import defaultdict
-#import seaborn as sns
-#import matplotlib.pyplot as plt
+from read_data import read_data
 
-#------------------------------------------
-# arguments
-#------------------------------------------
-parser = argparse.ArgumentParser()
-
-# add options
-parser.add_argument("--google_users", help="Get additional user informations from google Option = 0, 1, 2, ..", nargs=1, type=int)
-
-
-# parse arguments
-args = parser.parse_args()
-
-if args.google_users:
-    chunk_index = int(args.google_users[0])
 
 #-------------------------------------------
 # options
 #-------------------------------------------
-CreateCorrelation = False
-PlotCorrelation = False
-GoogleUsers = args.google_users
-
-
-def read_data(data):
-
-    # list to hold individual data frame
-    list_df_s = []
-
-    # retrieve subreddits
-    path_data = "data/%s" %data
-    list_csv = os.listdir(path_data)
-
-    # loop over subreddits
-    for csv in list_csv:
-
-        # retrieve csv file
-        path_csv = glob.glob(os.path.join(path_data+"/"+csv))[0]
-
-        # append to dataframe list if not empty
-        list_df_s.append(pd.read_csv(path_csv,index_col=None, header=0))
-
-
-    # concatenate dataframes
-    df = pd.concat(list_df_s)
-
-    return df
 
 
 def get_top_n(predictions, n=10):

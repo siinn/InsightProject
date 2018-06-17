@@ -98,41 +98,35 @@ def get_userinfo(user_id):
             time.sleep(3)
 
     # retrive user information from dict
-    name = payload['value']['name']
-    username = payload['value']['username']
-    bio = payload['value']['bio']
-    twitter = payload['value']['twitterScreenName']
-    facebook = payload['value']['facebookAccountId']
+    try:
+        name = payload['value']['name']
+    except:
+        name = ""
+        pass
 
-    #try:
-    #    name = payload['value']['name']
-    #except:
-    #    name = ""
-    #    pass
+    try:
+        username = payload['value']['username']
+    except:
+        username = ""
+        pass
 
-    #try:
-    #    username = payload['value']['username']
-    #except:
-    #    username = ""
-    #    pass
+    try:
+        bio = payload['value']['bio']
+    except:
+        bio = ""
+        pass
 
-    #try:
-    #    bio = payload['value']['bio']
-    #except:
-    #    bio = ""
-    #    pass
+    try:
+        twitter = payload['value']['twitterScreenName']
+    except:
+        twitter = ""
+        pass
 
-    #try:
-    #    twitter = payload['value']['twitterScreenName']
-    #except:
-    #    twitter = ""
-    #    pass
-
-    #try:
-    #    facebook = payload['value']['facebookAccountId']
-    #except:
-    #    facebook = ""
-    #    pass
+    try:
+        facebook = payload['value']['facebookAccountId']
+    except:
+        facebook = ""
+        pass
 
 
     # dictionary of user information
@@ -152,12 +146,28 @@ def get_post_responses(posts):
     responses = []
     for post in posts:
         url = MEDIUM + '/_/api/posts/' + post + '/responses'
-        response = requests.get(url)
-        response_dict = clean_json_response(response)
-        try:
-            responses += response_dict['payload']['value']
-        except:
-            pass
+
+        # maximum attempts to try
+        max_attempts = 10
+
+        # retrieve uesr information
+        for attempt in range(max_attempts):
+
+            # request for post responses
+            response = requests.get(url)
+
+            # check status code
+            if response.status_code == 200:
+
+                response_dict = clean_json_response(response)
+                try:
+                    responses += response_dict['payload']['value']
+                except:
+                    pass
+
+            else:
+                time.sleep(3)
+
     return responses
 
 
@@ -199,6 +209,9 @@ def download_article_list():
                         # require at least 1 comment
                         if (tag(text=re.compile('response'))):
 
+                        # require at least 10 recommends
+                        #if (response['virtuals']['recommends'] >= 10):
+
                             # retrieve title and link for each article
                             try:
                                 #title = tag.h3.text
@@ -212,7 +225,8 @@ def download_article_list():
                                 # append to dataframe
                                 df = df.append(pd.DataFrame([{"title":title, "response":response, 
                                                                 "link":link, "post_id":post_id,
-                                                                "claps":claps, "post_time":post_time 
+                                                                "claps":claps, "post_time":post_time,
+                                                                "topic":q 
                                                                 }]))
                             except:
                                 pass
@@ -249,6 +263,9 @@ def get_user_responses():
     
     # sub dataframe of list of articles
     df_sub = list_df_article[chunk_index]
+
+    # drop na
+    df_sub = df_sub.dropna(subset=["post_id"])
     
     # get responses from all post_id
     responses = get_post_responses(df_sub["post_id"])
@@ -264,16 +281,18 @@ def get_user_responses():
         df_user = df_user.append(pd.DataFrame([{"user_id":response_user_id, "post_id":post_id}]))
     
     # save to csv
-    df_user.to_csv("data/users/raw_users_%s.csv" % chunk_index, encoding='utf-8', index=False)
+    df_user.to_csv("data/response/users_response_%s.csv" % chunk_index, encoding='utf-8', index=False)
 
     print("Successfully retrieved responses from dataframe %s / %s" % (chunk_index+1, len(list_df_article)+1))
 
     return
 
+
+
 def get_user_information():
 
     # read dataframe with raw user information
-    df = read_data("users")
+    df = read_data("response")
 
     # merge rows of same user
     df = df.groupby(["user_id"]).agg({"post_id":lambda x: ', '.join(x)})
@@ -282,7 +301,7 @@ def get_user_information():
     df.reset_index(level=0, inplace=True)
 
     # chunk size
-    n = 1000
+    n = 600
     
     # split dataframe into subset
     list_df = [df[i:i+n] for i in range(0,df.shape[0],n)]
