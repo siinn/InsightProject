@@ -5,7 +5,8 @@ import pandas as pd
 import numpy as np
 import json
 from datetime import timedelta, date
-from surprise import Reader, Dataset, SVD, evaluate, model_selection
+from surprise import Reader, Dataset, SVD, evaluate
+from surprise.model_selection import GridSearchCV
 import pickle
 from collections import defaultdict
 from read_data import read_data
@@ -67,6 +68,33 @@ def prepare_data():
 
 
 def grid_search():
+
+    # Define the format
+    reader = Reader(line_format='user item rating', sep='\t')
+
+    # Load the data from the file using the reader format
+    data = Dataset.load_from_file('data/svd_input/df.csv', reader=reader)
+
+    # set parameters to search and its range
+    param_grid = {'n_epochs': [5, 10],          # number of iteration
+                    'lr_all': [0.002, 0.015],   # learning rate
+                    'reg_all': [0.4, 1.0]}      # regularization
+
+    # perform grid search on SVD model
+    gs = GridSearchCV(SVD, param_grid, measures=['rmse', 'mae'], cv=3)
+
+    # fit with the best estimator 
+    gs.fit(data)
+
+    # best RMSE score
+    print(gs.best_score['rmse'])
+
+    # combination of parameters that gave the best RMSE score
+    print(gs.best_params['rmse'])
+
+    # store grid search results as dataframe
+    results_df = pd.DataFrame.from_dict(gs.cv_results)
+    results_df.to_csv("data/grid_search/df.csv",index=False)
 
     return
 
