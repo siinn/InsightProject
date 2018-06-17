@@ -41,7 +41,7 @@ if args.get_userinfo:
 DownloadArticleList = args.download_articles
 GetResponses = args.get_response
 GetUserInfo = args.get_userinfo
-DecorateGroup = False
+DecorateGroup = True
 
 
 

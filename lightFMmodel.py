@@ -1,15 +1,15 @@
 #!/Users/sche/anaconda/bin/python3
-import re, os, glob, sys, ast, time
+import re, os, glob, sys, ast, time, json
 import argparse
 import pandas as pd
 import numpy as np
-import json
 from datetime import timedelta, date
-from surprise import Reader, Dataset, SVD, evaluate, accuracy
-from surprise.model_selection import GridSearchCV, KFold
 import pickle
 from collections import defaultdict
 from read_data import read_data
+from lightfm import LightFM
+from lightfm.evaluation import precision_at_k
+
 
 
 #-------------------------------------------
@@ -23,7 +23,7 @@ PrepareData = False
 GridSearch = False
 
 # perform cross-validation
-CrossValidation = True
+CrossValidation = False
 
 
 def get_top_n(predictions, n=10):
@@ -126,6 +126,28 @@ def perform_cross_validate():
 
     return
 
+def sample_recommendation(model, data, user_ids):
+
+    n_users, n_items = data['train'].shape
+
+    for user_id in user_ids:
+        known_positives = data['item_labels'][data['train'].tocsr()[user_id].indices]
+
+        scores = model.predict(user_id, np.arange(n_items))
+        top_items = data['item_labels'][np.argsort(-scores)]
+
+        print("User %s" % user_id)
+        print("     Known positives:")
+
+        for x in known_positives[:3]:
+            print("        %s" % x)
+
+        print("     Recommended:")
+
+        for x in top_items[:3]:
+            print("        %s" % x)
+
+
 
 if __name__ == '__main__':
 
@@ -140,6 +162,43 @@ if __name__ == '__main__':
     # perform cross-validation
     if (CrossValidation):
         perform_cross_validate()
+
+
+
+
+
+
+
+
+    # basics
+
+    # implicit, positive interaction
+    model = LightFM(no_components=30, loss='warp')
+
+    # train model
+    model.fit(train,
+          user_features=user_features,
+          item_features=item_features,
+          epochs=20)
+
+    # make prediction
+    predictions = model.predict(test_user_ids,
+                            test_item_ids,
+                            user_features=user_features,
+                            item_features=item_features)
+
+
+    # evaluate performance
+    # percentage of top k items that user has actually interacted
+    print("Train precision: %.2f" % precision_at_k(model, data['train'], k=5).mean())
+    print("Test precision: %.2f" % precision_at_k(model, data['test'], k=5).mean())
+
+
+    # get recommendation
+    sample_recommendation(model, data, [3, 25, 450])
+
+
+
 
     ## Define the format
     #reader = Reader(line_format='user item rating', sep='\t')
