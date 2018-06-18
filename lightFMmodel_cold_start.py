@@ -80,8 +80,8 @@ if __name__ == "__main__":
     user_features = get_user_features()
 
     dataset = Dataset(user_identity_features=True)
-    dataset.fit((x['user_id'] for x in get_data()),(x['post_id'] for x in get_data()), user_features=user_features)
-    #dataset.fit((x['user_id'] for x in get_data()),(x['post_id'] for x in get_data()))
+    #dataset.fit((x['user_id'] for x in get_data()),(x['post_id'] for x in get_data()), user_features=user_features)
+    dataset.fit((x['user_id'] for x in get_data()),(x['post_id'] for x in get_data()))
     
     # print shape
     num_users, num_items = dataset.interactions_shape()
@@ -104,8 +104,8 @@ if __name__ == "__main__":
     # build model
     #---------------------------
     model = LightFM(loss='bpr')
-    model.fit(interactions, user_features=user_features)
-    #model.fit(interactions)
+    #model.fit(interactions, user_features=user_features)
+    model.fit(interactions)
 
     # additional information about the model
     model.get_params()
@@ -118,24 +118,25 @@ if __name__ == "__main__":
     user_id_map, user_feature_map, item_id_map, item_feature_map = dataset.mapping()
 
     # make predictions for all user
-    prediction = model.predict_rank(interactions, user_features=user_features)
+    #prediction = model.predict_rank(interactions, user_features=user_features)
+    prediction = model.predict_rank(interactions)
 
     #---------------------------
     # make prediction for users
     #---------------------------
     
     # pickle user_id_map
-    f = open('data/pickle/user_id_map','wb')
+    f = open('data/pickle/user_id_map_cold','wb')
     pickle.dump(user_id_map,f)
     f.close()
     
     # pickle item_id_map
-    f = open('data/pickle/item_id_map','wb')
+    f = open('data/pickle/item_id_map_cold','wb')
     pickle.dump(item_id_map,f)
     f.close()
 
     # pickle prediction
-    f = open('data/pickle/prediction','wb')
+    f = open('data/pickle/prediction_cold','wb')
     pickle.dump(prediction,f)
     f.close()
 
