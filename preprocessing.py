@@ -8,6 +8,7 @@ import numpy as np
 from bs4 import BeautifulSoup
 from datetime import timedelta, date
 from read_data import read_data
+from nltk.tokenize import MWETokenizer
 from rake_nltk import Rake
 
 #------------------------------------------
@@ -369,7 +370,8 @@ def decorate_group():
     df = df.sort_values(by=['group_%s' % method])
 
     # extract keywords from bio
-    df["keyword"] = df["bio"].apply(keyword_extraction)
+    df["keyword_rake"] = df["bio"].apply(keyword_extraction)
+    df["keyword"] = df["bio"].apply(trim_bio)
 
     # save to csv
     df.to_csv("data/user_detail_medium/df.csv", encoding='utf-8', index=False)
@@ -392,6 +394,39 @@ def keyword_extraction(x):
             keywords[index] = "machine learning"
     
     return keywords                 # return ranked phrases
+
+def trim_bio(text):
+
+    # keywords to return
+    keywords = []               
+
+    # define important words
+    important_words = [ ["data", "science"],
+                        ["data", "scientist"],
+                        ["machine", "learning"],
+                        ["data", "engineer"],
+                        ["data", "analytics"],
+                        ["artificial", "intelligence"],
+                        ["ai"], ["phd"], ["founder"], ["professor"],["candidate"],["ceo"],
+                        ["student"], ["engineer"], ["computer", "science"]
+                        ]
+
+    tokenizer = MWETokenizer()              # initialize tokenizer
+    for iw in important_words:
+        tokenizer.add_mwe([x for x in iw])  # add important words
+
+    # tokenize bio
+    tokens = tokenizer.tokenize([word.lower() for word in text.split()])
+
+    # find important words from tokens, append it to keyword
+    for iw in important_words:
+        iw_joined = "_".join(iw)
+        if (iw_joined in tokens):
+            keywords.append(iw_joined)
+
+    return keywords
+
+
 
 
 if __name__ == '__main__':
@@ -417,3 +452,85 @@ if __name__ == '__main__':
 
 
 
+
+
+
+
+
+#
+#
+#
+#
+#
+#
+#
+#corpus = " ".join(df.bio)
+#corpus = re.sub('[^A-Za-z0-9]+', ' ', corpus)
+#
+#
+#
+#
+#from keyword_extract import RakeKeywordExtractor
+#rake = RakeKeywordExtractor()
+#keywords = rake.extract(corpus, incl_scores=True)
+#
+#
+#
+#
+#
+#
+#
+#
+## -----------------------------------
+#
+#
+#c2 = " ".join(t)
+#
+#
+#r = Rake()                          # initialize rake
+##r = Rake(min_length=1, max_length=1, ranking_metric=Metric.WORD_FREQUENCY)
+##r = Rake(min_length=1, max_length=2, ranking_metric=Metric.WORD_DEGREE)
+#r = Rake(min_length=1, max_length=2, ranking_metric=Metric.DEGREE_TO_FREQUENCY_RATIO)
+#r.extract_keywords_from_text(c2)# Extraction given the text.
+#keywords = r.get_ranked_phrases()   # ranked keywords
+#keywords_rank = r.get_ranked_phrases_with_scores()
+#
+#    # classfy users by bio
+#    group1a = "Data scientist|data scientist|Data Scientist"
+#    group2a = "Data science|Data Science|data science"
+#    group2b = "machine learning|Machine learning|Machine Learning"
+#    group2c = "engineering|engineer|Engineering|Engineer"
+#    group2d = "student|Student|candidate|Candidate|Amateur|amateur" 
+#
+#
+#
+#
+#
+#import re, os, glob, sys, ast, time
+#import argparse
+#import json
+#import requests
+#import pandas as pd
+#import numpy as np
+#from bs4 import BeautifulSoup
+#from datetime import timedelta, date
+#from read_data import read_data
+#from rake_nltk import Rake, Metric
+#
+## read dataframe containing detailed user information
+#df = read_data("user_detail")
+#
+## method used for user classification
+#method = "medium"
+#
+## detailed user information to use
+#user_detail = "bio"
+#
+## convert uesr info from string to dict
+#df["userinfo"] = df.userinfo.apply(ast.literal_eval)
+#
+## convert dict to columns
+#df = pd.concat([df.drop(['userinfo'], axis=1), df['userinfo'].apply(pd.Series)], axis=1)
+#
+#corpus = " ".join(df.bio)
+#corpus = re.sub('[^A-Za-z0-9]+', ' ', corpus)

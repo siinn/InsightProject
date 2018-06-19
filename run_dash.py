@@ -14,14 +14,33 @@ from read_data import read_data
 df = read_data("list_articles")
 df_user = read_data("user_detail_medium")
 
+# load pickles
+
+# retrieve pickled model (warm start)
+p = open('data/pickle/user_id_map_ws','rb')
+user_id_map_ws = pickle.load(p)
+
+p = open('data/pickle/item_id_map_ws','rb')
+item_id_map_ws = pickle.load(p)
+
+p = open('data/pickle/prediction_warp_ws','rb')
+prediction_ws = pickle.load(p)
+
+# retrieve pickled model (cold start)
+p = open('data/pickle/user_id_map_cs','rb')
+user_id_map_cs = pickle.load(p)
+
+p = open('data/pickle/item_id_map_cs','rb')
+item_id_map_cs = pickle.load(p)
+
+p = open('data/pickle/prediction_warp_cs','rb')
+prediction_cs = pickle.load(p)
 
 # create app
 app = dash.Dash(__name__, static_folder='static')
 
-# options to use local css
-app.scripts.config.serve_locally=True
-app.css.config.serve_locally=True
-#app.css.append_css({'external_url': 'https://codepen.io/chriddyp/pen/bWLwgP.css'})
+# goverment/health theme
+app.css.append_css({'external_url': 'https://codepen.io/plotly/pen/EQZeaW.css'})
 
 # custoom local image
 image_filename = 'static/analytics_g.png'
@@ -30,16 +49,7 @@ encoded_image = base64.b64encode(open(image_filename, 'rb').read())
 # create layout
 app.layout = html.Div([
     
-    # load custom css
-    html.Link(href='static/main.css', rel='stylesheet'),
-
-    # header
-    html.Div([
-        html.H2('Recommendation system'),
-        html.H3('Some description',)
-    ], style={'width': '90%', 'padding': '0px 50px 0px 50px'}),
-
-    html.Hr(style={'padding': '0px 0px 0px 0px'}),
+    html.Hr(style={'padding': '0px 0px 0px 0px','margin': '0px 0px 50px 0px'}),
 
     # container
     html.Div([
@@ -50,41 +60,44 @@ app.layout = html.Div([
             # logo
             html.Div([
                 html.Img(src='data:image/png;base64,{}'.format(encoded_image.decode()), width="100px", style={'display':'block'}),
-                html.H1('Medium', style={'display':'inline'}),
-            ], style={'width': '300px','display': 'inline-block'}),
+                html.H1('Medium', style={'margin': '0px 0px 0px 0px'}),
+                html.H6('Improved recommendation system'),
+            ], style={'width': '300px','display': 'inline-block', 'padding': '0px 0px 0px 0px'}),
 
             # drop dropdown and multi-select dropdown
             html.Div([
-                html.Label('Dropdown'),
+                html.Label('Select user'),
                 dcc.Dropdown(
                     id='selected_user',
                     options=[
-                        {'label': 'User1', 'value': '54a9d67e5f79'},
-                        {'label': 'User2', 'value': '8a5d3f4a4655'},
-                        {'label': 'User3', 'value': '29d86acdab2b'}
+                        {'label': 'User1', 'value': 'ed47957c7bbd'},
+                        {'label': 'User2', 'value': '78ff5a2855cb'},
+                        {'label': 'User3', 'value': '8a5d3f4a4655'},
+                        {'label': 'User4', 'value': '29d86acdab2b'},
+                        {'label': 'User5', 'value': 'd3e12cffc59a'}
                     ],
-                    value='54a9d67e5f79',
+                    value='ed47957c7bbd',
                 ),
             ], style={'display': 'block','padding': '10px 0px 10x 0px'}),
 
             html.Div([
-                html.Label('Multi-Select Dropdown'),
+                html.Label('What\'s your interest?'),
                 dcc.Dropdown(
                     options=[
-                        {'label': 'New York City', 'value': 'NYC'},
-                        {'label': 'Montreal', 'value': 'MTL'},
-                        {'label': 'San Francisco', 'value': 'SF'}
+                        {'label': 'Data science', 'value': 'ds'},
+                        {'label': 'Machine learning', 'value': 'ml'},
+                        {'label': 'AI', 'value': 'ai'}
                     ],
-                    value=['MTL', 'SF'],
+                    value=['ds', 'ml'],
                     multi=True
                 ),
-            ], style={'display': 'block','padding': '0px 0px 10px 0px'}),
+            ], style={'display': 'block','padding': '10px 0px 10px 0px'}),
 
             # custom user name and slider bar
             html.Div([
 
-                html.Label('Text Input'),
-                dcc.Input(id='selected_user', value='29d86acdab2b', type='text'),
+                html.Label('Name'),
+                dcc.Input(id='custom_user', value='Siinn Che', type='text'),
             ], style={'display': 'block','padding': '0px 0px 10px 0px'}),
 
             html.Div([
@@ -92,35 +105,43 @@ app.layout = html.Div([
                 html.Label('Slider'),
                 dcc.Slider(
                     min=0,
-                    max=2,
-                    marks={0:"Novice", 1:"Data related", 2:"Data scientist"},
-                    value=0,
+                    max=3,
+                    marks={0:"All", 1:"Non-data related", 2:"Data related", 3:"Data scientist"},
+                    value=0
                 ),
-            ], style={'display': 'block','padding': '0px 0px 10px 0px'}),
+            ], style={'padding': '0px 20px 80px 0px'}),
+
+            html.P(id='usergroup'),
+
 
         ], style={'width': '300px','display': 'inline-block', "float":"left",'padding': '0px 25px 0px 0px'}),
+
+
+        # print user information
+        html.Div([
+            html.H2(id='username'),
+        ], style={'width': '1000px', 'display': 'inline-block', 'vertical-align': 'top','padding': '50px 0px 0px 50px'}),
+
 
         # recommendation output
         html.Div([
 
-            html.H3('Recommendation'),
-            html.H4(id='print_selected_user'),
-            html.H4(id='username'),
-            html.H4(id='usergroup'),
-            html.H4(id='n_pred1'),
-            html.A("Link to external site", href='https://plot.ly', target="_blank")
+            html.H3('Recommendation (Cold start)'),
+            html.Li(html.A(id='t1_pred_link_cold', target="_blank", children="dummy", style={"text-decoration": "none"})),
+            html.Li(html.A(id='t2_pred_link_cold', target="_blank", children="dummy", style={"text-decoration": "none"})),
+            html.Li(html.A(id='t3_pred_link_cold', target="_blank", children="dummy", style={"text-decoration": "none"})),
 
-        ], style={'width': '400px', 'display': 'inline-block', 'vertical-align': 'top','padding': '100px 0px 0px 50px'}),
+
+        ], style={'width': '500px', 'display': 'inline-block', 'vertical-align': 'top','padding': '30px 0px 0px 50px'}),
 
         html.Div([
 
-            html.H3('Improved recommendation'),
-            html.H4(id='print_selected_user'),
-            html.H4(id='username'),
-            html.H4(id='usergroup'),
-            html.P(id='n_pred1')
+            html.H3('Recommendation (Improved)'),
+            html.Li(html.A(id='t1_pred_link', target="_blank", children="dummy", style={"text-decoration": "none"})),
+            html.Li(html.A(id='t2_pred_link', target="_blank", children="dummy", style={"text-decoration": "none"})),
+            html.Li(html.A(id='t3_pred_link', target="_blank", children="dummy", style={"text-decoration": "none"})),
 
-        ], style={'width': '400px', 'display': 'inline-block', 'vertical-align': 'top','padding': '100px 0px 0px 50px'})
+        ], style={'width': '500px', 'display': 'inline-block', 'vertical-align': 'top','padding': '30px 0px 0px 50px'})
 
     ], style={"max-width":"1600px",'width': '90%', "position":"relative", "float":"left", "margin":"0 auto", 'padding': '0px 50px 0px 50px', "box-sizing":"border-box"}),
     #], className="container"),
@@ -129,20 +150,12 @@ app.layout = html.Div([
 
 
 @app.callback(
-    Output(component_id='print_selected_user', component_property='children'),
-    [Input(component_id='selected_user', component_property='value')]
-)
-def update_username(input_value):
-    return 'User ID: "{}"'.format(input_value)
-
-
-@app.callback(
     Output(component_id='username', component_property='children'),
     [Input(component_id='selected_user', component_property='value')]
 )
 def update_username(input_value):
     name = df_user.loc[df_user["user_id"]==input_value, ["name"]].iloc[0][0]
-    return 'User name: "{}"'.format(name)
+    return 'Hi, {}! Here are some interesting articles to read.'.format(name)
 
 
 
@@ -157,59 +170,326 @@ def update_usergroup(input_value):
 
 
 
+#            post_title.append(df.loc[df["post_id"] == pid]["title"].iloc[0])
+#                post_id.append(pid)
+
+
+def get_article_link(input_value, rank):
+
+    # get prediction for input user
+    user = input_value
+    user_index = user_id_map_ws[user]                                  # internal index of user
+    user_prediction = np.array(prediction_ws[user_index].todense())    # all predictions for this user
+    user_top_n_index = np.argsort(-user_prediction)[:3][0]          # top recommendation
+    post_index = user_top_n_index[rank]                             # index of top recommendation
+
+    # loop over item_id_map, find post_id given index
+    for pid, pidx in item_id_map_ws.iteritems():
+        if pidx ==  post_index:
+
+            # return link for recommended item
+            return  df.loc[df["post_id"] == pid]["link"].iloc[0]
+
+    # return empty string if can't find link
+    return ""
+
+def get_article_link_cold(input_value, rank):
+
+    # get prediction for input user
+    user = input_value
+    user_index = user_id_map_cs[user]                                  # internal index of user
+    user_prediction = np.array(prediction_cs[user_index].todense())    # all predictions for this user
+    user_top_n_index = np.argsort(-user_prediction)[:3][0]          # top recommendation
+    post_index = user_top_n_index[rank]                             # index of top recommendation
+
+    # loop over item_id_map, find post_id given index
+    for pid, pidx in item_id_map_cs.iteritems():
+        if pidx ==  post_index:
+
+            # return link for recommended item
+            return  df.loc[df["post_id"] == pid]["link"].iloc[0]
+
+    # return empty string if can't find link
+    return ""
+
 @app.callback(
-    Output(component_id='n_pred1', component_property='children'),
+    dash.dependencies.Output(component_id='t1_pred_link', component_property='href'),
     [Input(component_id='selected_user', component_property='value')]
 )
-def n_prediction(input_value):
+def t1_pred_link(input_value):
 
-    # retrieve pickled model
-    p = open('data/pickle/user_id_map','rb')
-    user_id_map = pickle.load(p)
+    # return article link with rank 1
+    return get_article_link(input_value, 1)
 
-    p = open('data/pickle/item_id_map','rb')
-    item_id_map = pickle.load(p)
+@app.callback(
+    dash.dependencies.Output(component_id='t1_pred_link_cold', component_property='href'),
+    [Input(component_id='selected_user', component_property='value')]
+)
+def t1_pred_link_cold(input_value):
 
-    p = open('data/pickle/prediction','rb')
-    prediction = pickle.load(p)
+    # return article link with rank 1
+    return get_article_link_cold(input_value, 1)
 
-    # Let's say we want prediction for the following user
+
+@app.callback(
+    dash.dependencies.Output(component_id='t2_pred_link', component_property='href'),
+    [Input(component_id='selected_user', component_property='value')]
+)
+def t2_pred_link(input_value):
+
+    # return article link with rank 2
+    return get_article_link(input_value, 2)
+
+@app.callback(
+    dash.dependencies.Output(component_id='t2_pred_link_cold', component_property='href'),
+    [Input(component_id='selected_user', component_property='value')]
+)
+def t2_pred_link_cold(input_value):
+
+    # return article link with rank 2
+    return get_article_link_cold(input_value, 2)
+
+@app.callback(
+    dash.dependencies.Output(component_id='t3_pred_link', component_property='href'),
+    [Input(component_id='selected_user', component_property='value')]
+)
+def t3_pred_link(input_value):
+
+    # return article link with rank 3
+    return get_article_link(input_value, 3)
+
+@app.callback(
+    dash.dependencies.Output(component_id='t3_pred_link_cold', component_property='href'),
+    [Input(component_id='selected_user', component_property='value')]
+)
+def t3_pred_link_cold(input_value):
+
+    # return article link with rank 3
+    return get_article_link_cold(input_value, 3)
+
+
+
+def get_article_title(input_value, rank):
+
+    # get prediction for input user
     user = input_value
-    user_index = user_id_map[user]
-    user_prediction = np.array(prediction[user_index].todense())
-    user_top_n_index = np.argsort(-user_prediction)[:3][0]
+    user_index = user_id_map_ws[user]                                  # internal index of user
+    user_prediction = np.array(prediction_ws[user_index].todense())    # all predictions for this user
+    user_top_n_index = np.argsort(-user_prediction)[:3][0]          # top recommendation
+    post_index = user_top_n_index[rank]                             # index of top recommendation
 
-    # list to hold top recommended posts
-    post_id = []
-    post_link = []
-    post_title = []
+    # loop over item_id_map, find post_id given index
+    for pid, pidx in item_id_map_ws.iteritems():
+        if pidx ==  post_index:
 
-    # dataframe to find link
-    dfa = read_data("list_articles")
+            # return title for recommended item
+            return  df.loc[df["post_id"] == pid]["title"].iloc[0]
 
-    for rank in np.arange(3):
-        post_index = user_top_n_index[rank]
+    # return empty string if can't find title
+    return ""
 
-        # loop over item_id_map, find post_id given index
-        for pid, pidx in item_id_map.iteritems():
-            if pidx ==  post_index:
+def get_article_title_cold(input_value, rank):
 
-                # get post id
-                post_id.append(pid)
+    # get prediction for input user
+    user = input_value
+    user_index = user_id_map_cs[user]                                  # internal index of user
+    user_prediction = np.array(prediction_cs[user_index].todense())    # all predictions for this user
+    user_top_n_index = np.argsort(-user_prediction)[:3][0]          # top recommendation
+    post_index = user_top_n_index[rank]                             # index of top recommendation
 
-                # get link and title
-                post_link.append(dfa.loc[dfa["post_id"] == pid]["link"].iloc[0])
-                post_title.append(dfa.loc[dfa["post_id"] == pid]["title"].iloc[0])
+    # loop over item_id_map, find post_id given index
+    for pid, pidx in item_id_map_cs.iteritems():
+        if pidx ==  post_index:
+
+            # return title for recommended item
+            return  df.loc[df["post_id"] == pid]["title"].iloc[0]
+
+    # return empty string if can't find title
+    return ""
 
 
-    # return recommendation for this user
-    return 'Recommendation 1: "{}"'.format(post_link[0])
+@app.callback(
+    dash.dependencies.Output(component_id='t1_pred_link', component_property='children'),
+    [Input(component_id='selected_user', component_property='value')]
+)
+def t1_pred_title(input_value):
+
+    title = get_article_title(input_value, 1)
+    response = get_article_response(input_value, 1)
+    claps = get_article_claps(input_value, 1)
+
+    article = title + " (%s response, %s claps)" % (response, claps)
+
+    # return article title with rank 1
+    return article
+
+@app.callback(
+    dash.dependencies.Output(component_id='t1_pred_link_cold', component_property='children'),
+    [Input(component_id='selected_user', component_property='value')]
+)
+def t1_pred_title_cold(input_value):
+
+    title = get_article_title_cold(input_value, 1)
+    response = get_article_response_cold(input_value, 1)
+    claps = get_article_claps_cold(input_value, 1)
+
+    article = title + " (%s response, %s claps)" % (response, claps)
+    # return article title with rank 1
+    return article
 
 
+@app.callback(
+    dash.dependencies.Output(component_id='t2_pred_link', component_property='children'),
+    [Input(component_id='selected_user', component_property='value')]
+)
+def t2_pred_title(input_value):
 
+    title = get_article_title(input_value, 2)
+    response = get_article_response(input_value, 2)
+    claps = get_article_claps(input_value, 2)
+
+    article = title + " (%s response, %s claps)" % (response, claps)
+
+    # return article title with rank 2
+    return article
+
+@app.callback(
+    dash.dependencies.Output(component_id='t2_pred_link_cold', component_property='children'),
+    [Input(component_id='selected_user', component_property='value')]
+)
+def t2_pred_title_cold(input_value):
+
+    title = get_article_title_cold(input_value, 2)
+    response = get_article_response_cold(input_value, 2)
+    claps = get_article_claps_cold(input_value, 2)
+
+    article = title + " (%s response, %s claps)" % (response, claps)
+    # return article title with rank 2
+    return article
+
+@app.callback(
+    dash.dependencies.Output(component_id='t3_pred_link', component_property='children'),
+    [Input(component_id='selected_user', component_property='value')]
+)
+def t3_pred_title(input_value):
+
+    title = get_article_title(input_value, 3)
+    response = get_article_response(input_value, 3)
+    claps = get_article_claps(input_value, 3)
+
+    article = title + " (%s response, %s claps)" % (response, claps)
+
+    # return article title with rank 3
+    return article
+
+@app.callback(
+    dash.dependencies.Output(component_id='t3_pred_link_cold', component_property='children'),
+    [Input(component_id='selected_user', component_property='value')]
+)
+def t3_pred_title_cold(input_value):
+
+    title = get_article_title_cold(input_value, 3)
+    response = get_article_response_cold(input_value, 3)
+    claps = get_article_claps_cold(input_value, 3)
+
+    article = title + " (%s response, %s claps)" % (response, claps)
+    # return article title with rank 3
+    return article
+
+
+def get_article_claps(input_value, rank):
+
+    # get prediction for input user
+    user = input_value
+    user_index = user_id_map_ws[user]                                  # internal index of user
+    user_prediction = np.array(prediction_ws[user_index].todense())    # all predictions for this user
+    user_top_n_index = np.argsort(-user_prediction)[:3][0]          # top recommendation
+    post_index = user_top_n_index[rank]                             # index of top recommendation
+
+    # loop over item_id_map, find post_id given index
+    for pid, pidx in item_id_map_ws.iteritems():
+        if pidx ==  post_index:
+
+            # return claps for recommended item
+            return  df.loc[df["post_id"] == pid]["claps"].iloc[0]
+
+    # return empty string if can't find claps
+    return ""
+
+def get_article_claps_cold(input_value, rank):
+
+    # get prediction for input user
+    user = input_value
+    user_index = user_id_map_cs[user]                                  # internal index of user
+    user_prediction = np.array(prediction_cs[user_index].todense())    # all predictions for this user
+    user_top_n_index = np.argsort(-user_prediction)[:3][0]          # top recommendation
+    post_index = user_top_n_index[rank]                             # index of top recommendation
+
+    # loop over item_id_map, find post_id given index
+    for pid, pidx in item_id_map_cs.iteritems():
+        if pidx ==  post_index:
+
+            # return claps for recommended item
+            return  df.loc[df["post_id"] == pid]["claps"].iloc[0]
+
+    # return empty string if can't find claps
+    return ""
+
+
+def get_article_response(input_value, rank):
+
+    # get prediction for input user
+    user = input_value
+    user_index = user_id_map_ws[user]                                  # internal index of user
+    user_prediction = np.array(prediction_ws[user_index].todense())    # all predictions for this user
+    user_top_n_index = np.argsort(-user_prediction)[:3][0]          # top recommendation
+    post_index = user_top_n_index[rank]                             # index of top recommendation
+
+    # loop over item_id_map, find post_id given index
+    for pid, pidx in item_id_map_ws.iteritems():
+        if pidx ==  post_index:
+
+            # return response for recommended item
+            return  df.loc[df["post_id"] == pid]["response"].iloc[0]
+
+    # return empty string if can't find response
+    return ""
+
+def get_article_response_cold(input_value, rank):
+
+    # get prediction for input user
+    user = input_value
+    user_index = user_id_map_cs[user]                                  # internal index of user
+    user_prediction = np.array(prediction_cs[user_index].todense())    # all predictions for this user
+    user_top_n_index = np.argsort(-user_prediction)[:3][0]          # top recommendation
+    post_index = user_top_n_index[rank]                             # index of top recommendation
+
+    # loop over item_id_map, find post_id given index
+    for pid, pidx in item_id_map_cs.iteritems():
+        if pidx ==  post_index:
+
+            # return response for recommended item
+            return  df.loc[df["post_id"] == pid]["response"].iloc[0]
+
+    # return empty string if can't find response
+    return ""
 
 if __name__ == '__main__':
     app.run_server()
+
+
+
+
+
+
+#ADD DATES
+#PUT DATES, RESPONSES, CLAPS ON THE NEXT LINE
+
+
+
+
+
+
 
 
 

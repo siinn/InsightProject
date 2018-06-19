@@ -4,6 +4,7 @@ from read_data import read_data
 from sklearn.feature_extraction import DictVectorizer
 from lightfm.evaluation import precision_at_k
 from lightfm.data import Dataset
+from lightfm.cross_validation import random_train_test_split
 from lightfm import LightFM
 import numpy as np
 import pandas as pd
@@ -81,8 +82,8 @@ if __name__ == "__main__":
     user_features, user_feature_names = get_user_features()
 
     dataset = Dataset(user_identity_features=True)
-    #dataset.fit((x['user_id'] for x in get_data()),(x['post_id'] for x in get_data()), user_features=user_features)
-    dataset.fit((x['user_id'] for x in get_data()),(x['post_id'] for x in get_data()))
+    dataset.fit((x['user_id'] for x in get_data()),(x['post_id'] for x in get_data()), user_features=user_features)
+    #dataset.fit((x['user_id'] for x in get_data()),(x['post_id'] for x in get_data()))
     
     # print shape
     num_users, num_items = dataset.interactions_shape()
@@ -105,8 +106,8 @@ if __name__ == "__main__":
     # build model
     #---------------------------
     model = LightFM(loss='bpr')
-    #model.fit(interactions, user_features=user_features)
-    model.fit(interactions)
+    model.fit(interactions, user_features=user_features)
+    #model.fit(interactions)
 
     # additional information about the model
     model.get_params()
@@ -119,27 +120,55 @@ if __name__ == "__main__":
     user_id_map, user_feature_map, item_id_map, item_feature_map = dataset.mapping()
 
     # make predictions for all user
-    #prediction = model.predict_rank(interactions, user_features=user_features)
-    prediction = model.predict_rank(interactions)
+    prediction = model.predict_rank(interactions, user_features=user_features)
 
     #---------------------------
     # make prediction for users
     #---------------------------
     
     # pickle user_id_map
-    f = open('data/pickle/user_id_map_cold','wb')
+    f = open('data/pickle/user_id_map','wb')
     pickle.dump(user_id_map,f)
     f.close()
     
     # pickle item_id_map
-    f = open('data/pickle/item_id_map_cold','wb')
+    f = open('data/pickle/item_id_map','wb')
     pickle.dump(item_id_map,f)
     f.close()
 
     # pickle prediction
-    f = open('data/pickle/prediction_cold','wb')
+    f = open('data/pickle/prediction','wb')
     pickle.dump(prediction,f)
     f.close()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
     #-------------------------------

@@ -4,6 +4,7 @@ from read_data import read_data
 from sklearn.feature_extraction import DictVectorizer
 from lightfm.evaluation import precision_at_k
 from lightfm.data import Dataset
+from lightfm.cross_validation import random_train_test_split
 from lightfm import LightFM
 import numpy as np
 import pandas as pd
@@ -62,8 +63,9 @@ def get_user_features():
     from sklearn.feature_extraction import DictVectorizer
     dv = DictVectorizer()
     user_features = dv.fit_transform(df["keyword"])
+    feature_names = dv.get_feature_names()
 
-    return user_features
+    return user_features, feature_names
 
 
 if __name__ == "__main__":
@@ -73,102 +75,168 @@ if __name__ == "__main__":
         prepare_data()
     
     #---------------------------
-    # prepare dataset and user features
+    # prepare dataset and mapping
     #---------------------------
 
     # uesr features
-    user_features = get_user_features()
+    user_features, user_feature_names = get_user_features()
+    print(repr(user_features))
 
-    dataset = Dataset(user_identity_features=True)
-    dataset.fit((x['user_id'] for x in get_data()),(x['post_id'] for x in get_data()), user_features=user_features)
-    #dataset.fit((x['user_id'] for x in get_data()),(x['post_id'] for x in get_data()))
+    # create dataset
+    dataset_cs = Dataset(user_identity_features=True)       # cold start
+    dataset_ws = Dataset(user_identity_features=True)       # warm start
+
+    # create map between user_id, post_id, user_features and internal indices
+    dataset_cs.fit((x['user_id'] for x in get_data()),(x['post_id'] for x in get_data()))
+    dataset_ws.fit((x['user_id'] for x in get_data()),(x['post_id'] for x in get_data()), user_features=user_features)
     
     # print shape
-    num_users, num_items = dataset.interactions_shape()
+    num_users, num_items = dataset_cs.interactions_shape()
     print('Num users: {}, num_items {}.'.format(num_users, num_items))
-    
     
     #---------------------------
     # Building the interactions matrix
     #---------------------------
     # create interaction matrix to optimize
-    (interactions, weights) = dataset.build_interactions(((x['user_id'], x['post_id']) for x in get_data()))
-    print(repr(interactions))
-    
-    # prepare user features
-    #user_features = dataset.build_user_features(((x['user_id'], [x['group_medium']]) for x in get_user_features()))
-    print(repr(user_features))
-    
-   
+    (interactions_cs, weights_cs) = dataset_cs.build_interactions(((x['user_id'], x['post_id']) for x in get_data()))
+    (interactions_ws, weights_ws) = dataset_ws.build_interactions(((x['user_id'], x['post_id']) for x in get_data()))
+    print(repr(interactions_cs))
+    print(repr(interactions_ws))
+
+    # split data into train and test dataset
+    train_cs, test_cs = random_train_test_split(interactions_cs, test_percentage=0.2, random_state=None)
+    train_ws, test_ws = random_train_test_split(interactions_ws, test_percentage=0.2, random_state=None)
+
+
     #---------------------------
-    # build model
+    # train model
     #---------------------------
-    model = LightFM(loss='bpr')
-    model.fit(interactions, user_features=user_features)
-    #model.fit(interactions)
+    model_bpr_cs = LightFM(loss='bpr')          # Bayesian Personalised Ranking model
+    model_bpr_ws = LightFM(loss='bpr')     
+    model_warp_cs = LightFM(loss='warp')        # Weighted Approximate-Rank Pairwise
+    model_warp_ws = LightFM(loss='warp')        
+
+    model_bpr_cs.fit(train_cs)
+    model_bpr_ws.fit(train_ws, user_features=user_features)
+    model_warp_cs.fit(train_cs)
+    model_warp_ws.fit(train_ws, user_features=user_features)
 
     # additional information about the model
-    model.get_params()
-    model.get_user_representations()
-
-    # evaluate
-    #print("Train precision: %.2f" % precision_at_k(model, interactions, k=5).mean())
+    model_bpr_cs.get_params()
+    model_bpr_cs.get_user_representations()
 
     # retrieve mapping from dataset
-    user_id_map, user_feature_map, item_id_map, item_feature_map = dataset.mapping()
+    user_id_map_cs, user_feature_map_cs, item_id_map_cs, item_feature_map_cs = dataset_cs.mapping()
+    user_id_map_ws, user_feature_map_ws, item_id_map_ws, item_feature_map_ws = dataset_ws.mapping()
 
     # make predictions for all user
-    prediction = model.predict_rank(interactions, user_features=user_features)
+    prediction_bpr_cs = model_bpr_cs.predict_rank(interactions)
+    prediction_bpr_ws = model_bpr_ws.predict_rank(interactions, user_features=user_features)
+    prediction_warp_cs = model_warp_cs.predict_rank(interactions)
+    prediction_warp_ws = model_warp_ws.predict_rank(interactions, user_features=user_features)
+
+
+
+
+
 
     #---------------------------
-    # make prediction for users
+    # create pickles for production
     #---------------------------
+    model_warp_cs.fit(interactions_cs)
+    model_warp_ws.fit(interactions_ws, user_features=user_features)
+
+    prediction_warp_cs = model_warp_cs.predict_rank(interactions)
+    prediction_warp_ws = model_warp_ws.predict_rank(interactions, user_features=user_features)
     
-    # pickle user_id_map
-    f = open('data/pickle/user_id_map','wb')
-    pickle.dump(user_id_map,f)
+    # pickle cold start
+    f = open('data/pickle/user_id_map_cs','wb')
+    pickle.dump(user_id_map_cs,f)
     f.close()
     
-    # pickle item_id_map
-    f = open('data/pickle/item_id_map','wb')
-    pickle.dump(item_id_map,f)
+    f = open('data/pickle/item_id_map_cs','wb')
+    pickle.dump(item_id_map_cs,f)
     f.close()
 
-    # pickle prediction
-    f = open('data/pickle/prediction','wb')
-    pickle.dump(prediction,f)
+    f = open('data/pickle/prediction_warp_cs','wb')
+    pickle.dump(prediction_warp_cs,f)
+    f.close()
+    
+    # pickle warm start
+    f = open('data/pickle/user_id_map_ws','wb')
+    pickle.dump(user_id_map_ws,f)
+    f.close()
+    
+    f = open('data/pickle/item_id_map_ws','wb')
+    pickle.dump(item_id_map_ws,f)
+    f.close()
+
+    f = open('data/pickle/prediction_warp_ws','wb')
+    pickle.dump(prediction_warp_ws,f)
     f.close()
 
 
 
 
-    # Let's say we want prediction for the following user
-    user = "46143b2857b6"
-    user_index = user_id_map[user]
-    user_prediction = np.array(prediction[user_index].todense())
-    user_top_n_index = np.argsort(-user_prediction)[:3][0]
 
-    # list to hold top recommended posts
-    post_id = []
-    post_link = []
-    post_title = []
 
-    # dataframe to find link
-    dfa = read_data("list_articles")
 
-    for rank in np.arange(3):
-        post_index = user_top_n_index[rank]
 
-        # loop over item_id_map, find post_id given index
-        for pid, pidx in item_id_map.iteritems():
-            if pidx ==  post_index:
 
-                # get post id
-                post_id.append(pid)
 
-                # get link and title
-                post_link.append(dfa.loc[dfa["post_id"] == pid]["link"].iloc[0])
-                post_title.append(dfa.loc[dfa["post_id"] == pid]["title"].iloc[0])
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    #-------------------------------
+    # test
+    #-------------------------------
+
+    if (False):
+        # Let's say we want prediction for the following user
+        user = "46143b2857b6"
+        user_index = user_id_map[user]
+        user_prediction = np.array(prediction[user_index].todense())
+        user_top_n_index = np.argsort(-user_prediction)[:3][0]
+
+        # list to hold top recommended posts
+        post_id = []
+        post_link = []
+        post_title = []
+
+        # dataframe to find link
+        dfa = read_data("list_articles")
+
+        for rank in np.arange(3):
+            post_index = user_top_n_index[rank]
+
+            # loop over item_id_map, find post_id given index
+            for pid, pidx in item_id_map.iteritems():
+                if pidx ==  post_index:
+
+                    # get post id
+                    post_id.append(pid)
+
+                    # get link and title
+                    post_link.append(dfa.loc[dfa["post_id"] == pid]["link"].iloc[0])
+                    post_title.append(dfa.loc[dfa["post_id"] == pid]["title"].iloc[0])
 
 
     
