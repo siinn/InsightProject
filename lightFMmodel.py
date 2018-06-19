@@ -130,10 +130,10 @@ if __name__ == "__main__":
     user_id_map_ws, user_feature_map_ws, item_id_map_ws, item_feature_map_ws = dataset_ws.mapping()
 
     # make predictions for all user
-    prediction_bpr_cs = model_bpr_cs.predict_rank(interactions)
-    prediction_bpr_ws = model_bpr_ws.predict_rank(interactions, user_features=user_features)
-    prediction_warp_cs = model_warp_cs.predict_rank(interactions)
-    prediction_warp_ws = model_warp_ws.predict_rank(interactions, user_features=user_features)
+    prediction_bpr_cs = model_bpr_cs.predict_rank(interactions_cs)
+    prediction_bpr_ws = model_bpr_ws.predict_rank(interactions_ws, user_features=user_features)
+    prediction_warp_cs = model_warp_cs.predict_rank(interactions_cs)
+    prediction_warp_ws = model_warp_ws.predict_rank(interactions_ws, user_features=user_features)
 
 
 
@@ -146,8 +146,8 @@ if __name__ == "__main__":
     model_warp_cs.fit(interactions_cs)
     model_warp_ws.fit(interactions_ws, user_features=user_features)
 
-    prediction_warp_cs = model_warp_cs.predict_rank(interactions)
-    prediction_warp_ws = model_warp_ws.predict_rank(interactions, user_features=user_features)
+    prediction_warp_cs = model_warp_cs.predict_rank(interactions_cs)
+    prediction_warp_ws = model_warp_ws.predict_rank(interactions_ws, user_features=user_features)
     
     # pickle cold start
     f = open('data/pickle/user_id_map_cs','wb')
