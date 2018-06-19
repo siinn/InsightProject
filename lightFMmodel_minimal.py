@@ -1,6 +1,5 @@
 #!/Users/sche/anaconda/bin/python3
 import csv, ast
-from read_data import read_data
 from sklearn.feature_extraction import DictVectorizer
 from lightfm.evaluation import precision_at_k
 from lightfm.data import Dataset

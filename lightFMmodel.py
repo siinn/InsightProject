@@ -9,6 +9,7 @@ from lightfm import LightFM
 import numpy as np
 import pandas as pd
 import pickle
+import random
 
 
 #--------------------------------------
@@ -34,6 +35,52 @@ def prepare_data():
 def get_data():
 
     return csv.DictReader((x.decode("utf-8", "ignore") for x in open("data/model_input/df.csv")), delimiter="\t")
+
+# get tab-delimited train data
+def get_train_data():
+
+    return csv.DictReader((x.decode("utf-8", "ignore") for x in open("data/model_input/df_train.csv")), delimiter="\t")
+
+# get test data
+def get_test_data():
+
+    return dpd.read_csv("data/model_input/df_test.csv")
+
+# train test split
+def test_train_split(group, fraction):
+
+    # user-item data for model
+    df_train = pd.read_csv("data/model_input/df.csv", sep='\t') 
+
+    # dataframe with user detail
+    df_user_detail = read_data("user_detail_medium")
+
+    # select group to drop users from
+    if (group ==0):
+        test_group = df_user_detail
+    else: 
+        test_group = df_user_detail.loc[df_user_detail["group_medium"]==group]
+
+    # get list of unique user
+    unique_users = list(test_group.drop_duplicates(subset="user_id")["user_id"])
+
+    # number of test users
+    n_test_users = int(len(unique_users) * fraction)
+
+    # shuffle and select users to drop
+    random.shuffle(unique_users)
+    df_test_data = pd.DataFrame(unique_users[:n_test_users])
+
+    # set rating to 0 for test users
+    for index, user in df_test_data.iterrows():
+        df_train.loc[df["user_id"]==user[0], "comment"] = 0
+        
+    # save training set
+    df_train.to_csv("data/model_input/df_train.csv", sep="\t", index=False)
+    df_test_data.to_csv("data/model_input/df_test.csv", index=False)
+
+    return 
+    
 
 # convert list to dictionary
 def list_to_dict(keywords):
@@ -73,107 +120,115 @@ if __name__ == "__main__":
     # convert raw data to tab delimited format
     if(PrepareData):
         prepare_data()
-    
-    #---------------------------
-    # prepare dataset and mapping
-    #---------------------------
+   
 
-    # uesr features
-    user_features, user_feature_names = get_user_features()
-    print(repr(user_features))
+    # perform validation
+    if(True):
 
-    # create dataset
-    dataset_cs = Dataset(user_identity_features=True)       # cold start
-    dataset_ws = Dataset(user_identity_features=True)       # warm start
+        # set test group and size (0=all, 3=non-data, 2=data related, 1=data scientist)
+        test_fraction = 0.2
+        test_group = 1
 
-    # create map between user_id, post_id, user_features and internal indices
-    dataset_cs.fit((x['user_id'] for x in get_data()),(x['post_id'] for x in get_data()))
-    dataset_ws.fit((x['user_id'] for x in get_data()),(x['post_id'] for x in get_data()), user_features=user_features)
-    
-    # print shape
-    num_users, num_items = dataset_cs.interactions_shape()
-    print('Num users: {}, num_items {}.'.format(num_users, num_items))
-    
-    #---------------------------
-    # Building the interactions matrix
-    #---------------------------
-    # create interaction matrix to optimize
-    (interactions_cs, weights_cs) = dataset_cs.build_interactions(((x['user_id'], x['post_id']) for x in get_data()))
-    (interactions_ws, weights_ws) = dataset_ws.build_interactions(((x['user_id'], x['post_id']) for x in get_data()))
-    print(repr(interactions_cs))
-    print(repr(interactions_ws))
+        # uesr features
+        user_features, user_feature_names = get_user_features()
+        print(repr(user_features))
 
-    # split data into train and test dataset
-    train_cs, test_cs = random_train_test_split(interactions_cs, test_percentage=0.2, random_state=None)
-    train_ws, test_ws = random_train_test_split(interactions_ws, test_percentage=0.2, random_state=None)
+        # create dataset
+        dataset_cs = Dataset(user_identity_features=True)       # cold start
+        dataset_ws = Dataset(user_identity_features=True)       # warm start
 
+        # prepare train and test data by setting rating to 0 for random users
+        test_train_split(test_group, test_fraction)
 
-    #---------------------------
-    # train model
-    #---------------------------
-    model_bpr_cs = LightFM(loss='bpr')          # Bayesian Personalised Ranking model
-    model_bpr_ws = LightFM(loss='bpr')     
-    model_warp_cs = LightFM(loss='warp')        # Weighted Approximate-Rank Pairwise
-    model_warp_ws = LightFM(loss='warp')        
+        # create map between user_id, post_id, user_features and internal indices
+        #dataset_cs.fit((x['user_id'] for x in get_data()),(x['post_id'] for x in get_data()))
+        dataset_cs.fit((x['user_id'] for x in get_train_data()),(x['post_id'] for x in get_train_data()))
+        dataset_ws.fit((x['user_id'] for x in get_train_data()),(x['post_id'] for x in get_train_data()), user_features=user_features)
+        
+        # print shape
+        num_users, num_items = dataset_cs.interactions_shape()
+        print('Num users: {}, num_items {}.'.format(num_users, num_items))
+        
+        #---------------------------
+        # Building the interactions matrix
+        #---------------------------
+        # create interaction matrix to optimize
+        (interactions_cs, weights_cs) = dataset_cs.build_interactions(((x['user_id'], x['post_id']) for x in get_data()))
+        (interactions_ws, weights_ws) = dataset_ws.build_interactions(((x['user_id'], x['post_id']) for x in get_data()))
+        print(repr(interactions_cs))
+        print(repr(interactions_ws))
 
-    model_bpr_cs.fit(train_cs)
-    model_bpr_ws.fit(train_ws, user_features=user_features)
-    model_warp_cs.fit(train_cs)
-    model_warp_ws.fit(train_ws, user_features=user_features)
-
-    # additional information about the model
-    model_bpr_cs.get_params()
-    model_bpr_cs.get_user_representations()
-
-    # retrieve mapping from dataset
-    user_id_map_cs, user_feature_map_cs, item_id_map_cs, item_feature_map_cs = dataset_cs.mapping()
-    user_id_map_ws, user_feature_map_ws, item_id_map_ws, item_feature_map_ws = dataset_ws.mapping()
-
-    # make predictions for all user
-    prediction_bpr_cs = model_bpr_cs.predict_rank(interactions_cs)
-    prediction_bpr_ws = model_bpr_ws.predict_rank(interactions_ws, user_features=user_features)
-    prediction_warp_cs = model_warp_cs.predict_rank(interactions_cs)
-    prediction_warp_ws = model_warp_ws.predict_rank(interactions_ws, user_features=user_features)
+        # split data into train and test dataset
+        train_cs, test_cs = random_train_test_split(interactions_cs, test_percentage=0.2, random_state=None)
+        train_ws, test_ws = random_train_test_split(interactions_ws, test_percentage=0.2, random_state=None)
 
 
+        #---------------------------
+        # train model
+        #---------------------------
+        model_bpr_cs = LightFM(loss='bpr')          # Bayesian Personalised Ranking model
+        model_bpr_ws = LightFM(loss='bpr')     
+        model_warp_cs = LightFM(loss='warp')        # Weighted Approximate-Rank Pairwise
+        model_warp_ws = LightFM(loss='warp')        
+
+        model_bpr_cs.fit(train_cs)
+        model_bpr_ws.fit(train_ws, user_features=user_features)
+        model_warp_cs.fit(train_cs)
+        model_warp_ws.fit(train_ws, user_features=user_features)
+
+        # additional information about the model
+        model_bpr_cs.get_params()
+        model_bpr_cs.get_user_representations()
+
+        # retrieve mapping from dataset
+        user_id_map_cs, user_feature_map_cs, item_id_map_cs, item_feature_map_cs = dataset_cs.mapping()
+        user_id_map_ws, user_feature_map_ws, item_id_map_ws, item_feature_map_ws = dataset_ws.mapping()
+
+        # make predictions for all user
+        prediction_bpr_cs = model_bpr_cs.predict_rank(interactions_cs)
+        prediction_bpr_ws = model_bpr_ws.predict_rank(interactions_ws, user_features=user_features)
+        prediction_warp_cs = model_warp_cs.predict_rank(interactions_cs)
+        prediction_warp_ws = model_warp_ws.predict_rank(interactions_ws, user_features=user_features)
 
 
 
 
-    #---------------------------
-    # create pickles for production
-    #---------------------------
-    model_warp_cs.fit(interactions_cs)
-    model_warp_ws.fit(interactions_ws, user_features=user_features)
 
-    prediction_warp_cs = model_warp_cs.predict_rank(interactions_cs)
-    prediction_warp_ws = model_warp_ws.predict_rank(interactions_ws, user_features=user_features)
-    
-    # pickle cold start
-    f = open('data/pickle/user_id_map_cs','wb')
-    pickle.dump(user_id_map_cs,f)
-    f.close()
-    
-    f = open('data/pickle/item_id_map_cs','wb')
-    pickle.dump(item_id_map_cs,f)
-    f.close()
 
-    f = open('data/pickle/prediction_warp_cs','wb')
-    pickle.dump(prediction_warp_cs,f)
-    f.close()
-    
-    # pickle warm start
-    f = open('data/pickle/user_id_map_ws','wb')
-    pickle.dump(user_id_map_ws,f)
-    f.close()
-    
-    f = open('data/pickle/item_id_map_ws','wb')
-    pickle.dump(item_id_map_ws,f)
-    f.close()
+        #---------------------------
+        # create pickles for production
+        #---------------------------
+        model_warp_cs.fit(interactions_cs)
+        model_warp_ws.fit(interactions_ws, user_features=user_features)
 
-    f = open('data/pickle/prediction_warp_ws','wb')
-    pickle.dump(prediction_warp_ws,f)
-    f.close()
+        prediction_warp_cs = model_warp_cs.predict_rank(interactions_cs)
+        prediction_warp_ws = model_warp_ws.predict_rank(interactions_ws, user_features=user_features)
+        
+        # pickle cold start
+        f = open('data/pickle/user_id_map_cs','wb')
+        pickle.dump(user_id_map_cs,f)
+        f.close()
+        
+        f = open('data/pickle/item_id_map_cs','wb')
+        pickle.dump(item_id_map_cs,f)
+        f.close()
+
+        f = open('data/pickle/prediction_warp_cs','wb')
+        pickle.dump(prediction_warp_cs,f)
+        f.close()
+        
+        # pickle warm start
+        f = open('data/pickle/user_id_map_ws','wb')
+        pickle.dump(user_id_map_ws,f)
+        f.close()
+        
+        f = open('data/pickle/item_id_map_ws','wb')
+        pickle.dump(item_id_map_ws,f)
+        f.close()
+
+        f = open('data/pickle/prediction_warp_ws','wb')
+        pickle.dump(prediction_warp_ws,f)
+        f.close()
 
 
 
