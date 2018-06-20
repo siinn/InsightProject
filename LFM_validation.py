@@ -16,7 +16,8 @@ import pickle
 # Options
 #--------------------------------------
 # create tab-delimited data
-PrepareData = False
+PrepareData     = True
+RunValidation   = True
 
 
 
@@ -129,40 +130,52 @@ def precision_recall_score(test_data, prediction, user_id_map, item_id_map, k):
     # retrieve post id of prediction for test users
     for index, row in test_data.iterrows():
 
-        #print("Calculating precision at k, recall at k score for user: %s" % row[0])
+        #----------------------------
+        # retrieve predictions
+        #----------------------------
         user_id = row[0]
         user_index = user_id_map[user_id]                                       # index of test users 
+        print(user_id)
         prediction_index_unsorted = np.array(prediction[user_index].todense())  # unsorted prediction of test users
         prediction_index = np.argsort(-prediction_index_unsorted)[0]            # sorted prediction
-        prediction_post_id = []                                                 # list to hold prediction post id
+        prediction_post_id_upto_k_prec = []                                     # list to hold prediction post id
+        prediction_post_id_upto_k_rec  = []                                     # list to hold prediction post id
 
-        # predicted post_id corresponding to post_index upto n
-        for rank in np.arange(k):
+        # predicted post_id corresponding to post_index upto k for precision
+        for rank in np.arange(k[0]):
             post_index = prediction_index[rank]                                 # index of k-th predicted post
 
             # loop over item_id_map, find post_id given index
             for pid, pidx in item_id_map.iteritems():
                 if pidx ==  post_index:
-                    prediction_post_id.append(pid)                              # predicted post id
+                    prediction_post_id_upto_k_prec.append(pid)                  # predicted post id
+
+        # predicted post_id corresponding to post_index upto k for recall
+        for rank in np.arange(k[1]):
+            post_index = prediction_index[rank]                                 # index of k-th predicted post
+
+            # loop over item_id_map, find post_id given index
+            for pid, pidx in item_id_map.iteritems():
+                if pidx ==  post_index:
+                    prediction_post_id_upto_k_rec.append(pid)                   # predicted post id
+
+        #----------------------------
+        # calculate validation metrics
+        #----------------------------
 
         # train data to look up articles test users liked
         df_train = pd.read_csv("data/model_input/df.csv", sep='\t')
         truth_post_id = df_train.loc[df_train["user_id"]==user_id]["post_id"].tolist()
 
-        # common articles between prediction upto k and truth
-        match = set(prediction_post_id) & set(truth_post_id) 
-
-        # debugging
-        #print("user_id = " + str(user_id))
-        #print(prediction_post_id)
-        #print(truth_post_id)
-        #print("precision = " + str(len(match) / k))
+        # common articles between prediction upto k and truth for precision
+        match_precision = set(prediction_post_id_upto_k_prec) & set(truth_post_id) 
+        match_recall    = set(prediction_post_id_upto_k_rec) & set(truth_post_id) 
 
         # find reciprocal rank
         reciprocal_rank_for_user = []
         for i, true_post in enumerate(truth_post_id):
             post_found = False
-            for j, pred_post in enumerate(prediction_post_id):
+            for j, pred_post in enumerate(prediction_post_id_upto_k_prec):
                 if (true_post == pred_post):
                     reciprocal_rank_for_user.append(1. / (j+1))     # add to reciprocal rank
                     post_found = True
@@ -171,12 +184,18 @@ def precision_recall_score(test_data, prediction, user_id_map, item_id_map, k):
 
       
         # average reciprocal rank of this user
-        ave_recip = sum(reciprocal_rank_for_user) / len(reciprocal_rank_for_user)
+        if (len(reciprocal_rank_for_user) > 0):
+            ave_recip = sum(reciprocal_rank_for_user) / len(reciprocal_rank_for_user)
+        else:
+            ave_recip = 0 
 
         # append the results
-        precision_at_k_list.append(len(match) / k)
-        recall_at_k_list.append(len(match) / len(truth_post_id))
-        reciprocal_rank_list.append(sum(reciprocal_rank_for_user) / len(reciprocal_rank_for_user))
+        precision_at_k_list.append(len(match_precision) / k[0])
+        reciprocal_rank_list.append(ave_recip)
+        if (len(truth_post_id) > 0):
+            recall_at_k_list.append(len(match_recall) / len(truth_post_id))
+        else:
+            recall_at_k_list.append(0)
 
     return precision_at_k_list, recall_at_k_list, reciprocal_rank_list
 
@@ -196,20 +215,27 @@ def merge_scores(mp_result):
     return precision_at_k_merged, recall_at_k_merged, reciprocal_rank_merged
 
 
+def run_validation(test_group, test_fraction, max_val):
 
-if __name__ == "__main__":
+    # containers to hold results
+    ave_precision_at_k_warp_cs  = []
+    ave_recall_at_k_warp_cs     = []
+    ave_reciprocal_rank_warp_cs = []
 
-    # convert raw data to tab delimited format
-    if(PrepareData):
-        prepare_data()
+    ave_precision_at_k_warp_ws  = []
+    ave_recall_at_k_warp_ws     = []
+    ave_reciprocal_rank_warp_ws = []
    
 
     # perform validation
-    if(True):
+    validation_itr = 0
 
-        # set test group and size (0=all, 3=non-data, 2=data related, 1=data scientist)
-        test_fraction = 0.2
-        test_group = 2
+    while (validation_itr < max_val):
+
+        print("Start validation iteration %s" %validation_itr)
+
+        # count
+        validation_itr += 1
 
         # uesr features
         user_features, user_feature_names = get_user_features()
@@ -240,45 +266,45 @@ if __name__ == "__main__":
         print(repr(interactions_ws))
 
         # retrieve mapping from dataset
-        user_id_map_cs, user_feature_map_cs, item_id_map_cs, item_feature_map_cs = data_train_cs.mapping()
-        user_id_map_ws, user_feature_map_ws, item_id_map_ws, item_feature_map_ws = data_train_ws.mapping()
+        user_id_map, user_feature_map, item_id_map, item_feature_map = data_train_cs.mapping()
 
         #---------------------------
         # train model
         #---------------------------
-        model_bpr_cs = LightFM(learning_rate=0.05, loss='bpr')
-        model_bpr_ws = LightFM(learning_rate=0.05, loss='bpr', no_components=15)     
+        #model_bpr = LightFM(learning_rate=0.05, loss='logistic')
         model_warp_cs = LightFM(learning_rate=0.05, loss='warp')
         model_warp_ws = LightFM(learning_rate=0.05, loss='warp', no_components=15)
 
-        model_bpr_cs.fit(interactions_cs, epochs=10)
-        model_bpr_ws.fit(interactions_ws, user_features=user_features, epochs=10)
+        #model_bpr.fit(interactions_cs, epochs=10)
         model_warp_cs.fit(interactions_cs, epochs=10)
         model_warp_ws.fit(interactions_ws, user_features=user_features, epochs=10)
-
-        # additional information about the model
-        #model_warp_ws.get_params()
-        #model_warp_ws.get_user_representations()
 
         #---------------------------
         # make predictions
         #---------------------------
 
         # make predictions for all user
-        #prediction_bpr_cs = model_bpr_cs.predict_rank(interactions_cs)
-        #prediction_bpr_ws = model_bpr_ws.predict_rank(interactions_ws, user_features=user_features)
+        #prediction_bpr     = model_bpr.predict_rank(interactions_cs)
         prediction_warp_cs = model_warp_cs.predict_rank(interactions_cs)
         prediction_warp_ws = model_warp_ws.predict_rank(interactions_ws, user_features=user_features)
 
         #---------------------------
         # calculate validation score
         #---------------------------
-        # choose k
-        k = 10
+        # choose k for precision and recall
+        k = [5, 3]
+
+        # bpr
+        #precision_recall_score_mp_bpr     = partial( precision_recall_score, prediction = prediction_bpr,
+        #                                            user_id_map = user_id_map, item_id_map = item_id_map, k = k)
+        #test_data_itr_bpr= pd.read_csv('data/model_input/df_test.csv', chunksize=30)         # test data as iterable
+        #pool_bpr         = multiprocessing.Pool(processes=8)                                 # setup pool
+        #results_bpr      = pool_bpr.map(precision_recall_score_mp_bpr, test_data_itr_bpr)    # run MP
+        #pool_bpr.close
 
         # cold start
         precision_recall_score_mp_warp_cs = partial( precision_recall_score, prediction = prediction_warp_cs,
-                                                    user_id_map = user_id_map_cs, item_id_map = item_id_map_cs, k = k)
+                                                    user_id_map = user_id_map, item_id_map = item_id_map, k = k)
         test_data_itr_cs = pd.read_csv('data/model_input/df_test.csv', chunksize=30)         # test data as iterable
         pool_cs          = multiprocessing.Pool(processes=8)                                 # setup pool
         results_warp_cs  = pool_cs.map(precision_recall_score_mp_warp_cs, test_data_itr_cs)  # run MP
@@ -286,225 +312,65 @@ if __name__ == "__main__":
 
         # warm start
         precision_recall_score_mp_warp_ws = partial( precision_recall_score, prediction = prediction_warp_ws,
-                                                    user_id_map = user_id_map_ws, item_id_map = item_id_map_ws, k = k)
+                                                    user_id_map = user_id_map, item_id_map = item_id_map, k = k)
         test_data_itr_ws = pd.read_csv('data/model_input/df_test.csv', chunksize=30)
         pool_ws          = multiprocessing.Pool(processes=8)
         results_warp_ws  = pool_ws.map(precision_recall_score_mp_warp_ws, test_data_itr_ws)   # run MP
         pool_ws.close
 
+
+        # TEST________________________________--
+        #precision_recall_score(test_data, prediction, user_id_map, item_id_map, k):
+            
+
+
         # merge results from multiprocessing
+        #precision_at_k_bpr, recall_at_k_bpr, reciprocal_rank_bpr = merge_scores(results_bpr)
         precision_at_k_warp_cs, recall_at_k_warp_cs, reciprocal_rank_warp_cs = merge_scores(results_warp_cs)
         precision_at_k_warp_ws, recall_at_k_warp_ws, reciprocal_rank_warp_ws = merge_scores(results_warp_ws)
 
-        print(sum(precision_at_k_warp_cs) / len(precision_at_k_warp_cs))
-        print(sum(recall_at_k_warp_cs) / len(recall_at_k_warp_cs))
-        print(sum(reciprocal_rank_warp_cs) / len(reciprocal_rank_warp_cs))
+        # append score from each iteration to results
+        ave_precision_at_k_warp_cs.append(sum(precision_at_k_warp_cs) / len(precision_at_k_warp_cs))
+        ave_recall_at_k_warp_cs.append(sum(recall_at_k_warp_cs) / len(recall_at_k_warp_cs))
+        ave_reciprocal_rank_warp_cs.append(sum(reciprocal_rank_warp_cs) / len(reciprocal_rank_warp_cs))
 
-        print(sum(precision_at_k_warp_ws) / len(precision_at_k_warp_ws))
-        print(sum(recall_at_k_warp_ws) / len(recall_at_k_warp_ws))
-        print(sum(reciprocal_rank_warp_ws) / len(reciprocal_rank_warp_ws))
+        ave_precision_at_k_warp_ws.append(sum(precision_at_k_warp_ws) / len(precision_at_k_warp_ws))
+        ave_recall_at_k_warp_ws.append(sum(recall_at_k_warp_ws) / len(recall_at_k_warp_ws))
+        ave_reciprocal_rank_warp_ws.append(sum(reciprocal_rank_warp_ws) / len(reciprocal_rank_warp_ws))
 
 
-        # cold start
-        #test_data = pd.read_csv('data/model_input/df_test.csv', sep="\t")         # test data as iterable
-        #precision_recall_score(test_data, prediction = prediction_warp_cs, user_id_map = user_id_map_cs, item_id_map = item_id_map_cs, k = k)
-        #precision_recall_score(test_data, prediction = prediction_warp_ws, user_id_map = user_id_map_ws, item_id_map = item_id_map_ws, k = k)
+    print("Validation score for cold start")
+    print(ave_precision_at_k_warp_cs  )
+    print(ave_recall_at_k_warp_cs     )
+    print(ave_reciprocal_rank_warp_cs )
+    print("Validation score for warm start")
+    print(ave_precision_at_k_warp_ws  )
+    print(ave_recall_at_k_warp_ws     )
+    print(ave_reciprocal_rank_warp_ws )
 
-        ## Let's say we want prediction for the following user
-        #user = "f5fc2c88a84d"
+    df_result = pd.DataFrame({
+        'precision_at_k_cs': ave_precision_at_k_warp_cs,
+        'recall_at_k_cs': ave_recall_at_k_warp_cs,
+        'reciprocal_rank_cs': ave_reciprocal_rank_warp_cs,
+        'precision_at_k_ws': ave_precision_at_k_warp_ws,
+        'recall_at_k_ws': ave_recall_at_k_warp_ws,
+        'reciprocal_rank_ws': ave_reciprocal_rank_warp_ws,
+        })
 
-        #user_index_cs = user_id_map_cs[user]
-        #user_index_ws = user_id_map_ws[user]
+    # save to file
+    df.to_csv("data/validation/df.csv", index=False)
 
-        #prediction_warp_cs = model_warp_cs.predict_rank(interactions_cs)
-        #prediction_warp_ws = model_warp_ws.predict_rank(interactions_ws, user_features=user_features)
+    return
 
-        #user_prediction_cs = np.array(prediction_warp_cs[user_index_cs].todense())
-        #user_prediction_ws = np.array(prediction_warp_ws[user_index_ws].todense())
 
-        #user_top_n_index_cs = np.argsort(-user_prediction_cs)[:3][0]
-        #user_top_n_index_ws = np.argsort(-user_prediction_ws)[:3][0]
+if __name__ == "__main__":
 
-        ## list to hold top recommended posts
-        #post_id = []
-        #post_link = []
-        #post_title = []
+    # convert raw data to tab delimited format
+    if(PrepareData):
+        prepare_data()
 
-        ## dataframe to find link
-        #dfa = read_data("list_articles")
+    if(RunValidation):
+        run_validation(0, 0.2, 2)       # test group, test size, max iteration
 
-        #for rank in np.arange(3):
-        #    post_index = user_top_n_index[rank]
 
-        #    # loop over item_id_map, find post_id given index
-        #    for pid, pidx in item_id_map.iteritems():
-        #        if pidx ==  post_index:
 
-        #            # get post id
-        #            post_id.append(pid)
-
-        #            # get link and title
-        #            post_link.append(dfa.loc[dfa["post_id"] == pid]["link"].iloc[0])
-        #            post_title.append(dfa.loc[dfa["post_id"] == pid]["title"].iloc[0])
-
-    
-        #precision_recall_score(test_data[2:3], prediction_warp_cs, user_id_map_cs, item_id_map_cs, k)
-        #precision_recall_score(test_data[2:3], prediction_warp_ws, user_id_map_ws, item_id_map_ws, k)
-
-        #precision_recall_score(pd.DataFrame(df_train.loc[:1]["user_id"]), prediction_warp_cs, user_id_map_cs, item_id_map_cs, k)
-        #precision_recall_score(pd.DataFrame(df_train.loc[:1]["user_id"]), prediction_warp_ws, user_id_map_ws, item_id_map_ws, k)
-        
-#        mp_result = ThreadPool(processes=4).apply(precision_recall_score, [prediction_warp_cs, test_data, user_id_map_cs, item_id_map_cs, k])
-#
-#        mp_result = Pool().apply(precision_recall_score_mp, [prediction_warp_cs, test_data, user_id_map_cs, item_id_map_cs, k])
-#        #prec_at_k_warp_cs, recall_at_k_warp_cs = Pool().map(precision_recall_score,
-#        #                                                    prediction_warp_cs, test_data, user_id_map_cs, item_id_map_cs, k)
-#        #prec_at_k_warp_ws, recall_at_k_warp_ws = Pool().map(precision_recall_score,
-#        #                                                    prediction_warp_ws, test_data, user_id_map_ws, item_id_map_ws, k)
-#
-#        #print(sum(prec_at_k_bpr_cs) / len(prec_at_k_bpr_cs))
-#        #print(sum(prec_at_k_bpr_ws) / len(prec_at_k_bpr_ws))
-#        print(sum(prec_at_k_warp_cs) / len(prec_at_k_warp_cs))
-#        print(sum(prec_at_k_warp_ws) / len(prec_at_k_warp_ws))
-#
-#        #print(sum(recall_at_k_bpr_cs) / len(recall_at_k_bpr_cs))
-#        #print(sum(recall_at_k_bpr_ws) / len(recall_at_k_bpr_ws))
-#        print(sum(recall_at_k_warp_cs) / len(recall_at_k_warp_cs))
-#        print(sum(recall_at_k_warp_ws) / len(recall_at_k_warp_ws))
-#
-#
-#
-#
-#
-#
-#        #---------------------------
-#        # create pickles for production
-#        #---------------------------
-#        model_warp_cs.fit(interactions_cs)
-#        model_warp_ws.fit(interactions_ws, user_features=user_features)
-#
-#        prediction_warp_cs = model_warp_cs.predict_rank(interactions_cs)
-#        prediction_warp_ws = model_warp_ws.predict_rank(interactions_ws, user_features=user_features)
-#        
-#        # pickle cold start
-#        f = open('data/pickle/user_id_map_cs','wb')
-#        pickle.dump(user_id_map_cs,f)
-#        f.close()
-#        
-#        f = open('data/pickle/item_id_map_cs','wb')
-#        pickle.dump(item_id_map_cs,f)
-#        f.close()
-#
-#        f = open('data/pickle/prediction_warp_cs','wb')
-#        pickle.dump(prediction_warp_cs,f)
-#        f.close()
-#        
-#        # pickle warm start
-#        f = open('data/pickle/user_id_map_ws','wb')
-#        pickle.dump(user_id_map_ws,f)
-#        f.close()
-#        
-#        f = open('data/pickle/item_id_map_ws','wb')
-#        pickle.dump(item_id_map_ws,f)
-#        f.close()
-#
-#        f = open('data/pickle/prediction_warp_ws','wb')
-#        pickle.dump(prediction_warp_ws,f)
-#        f.close()
-#
-#
-#
-#
-#
-#
-#
-#
-#
-#
-#
-#    #-------------------------------
-#    # test
-#    #-------------------------------
-#
-#    if (False):
-#        # Let's say we want prediction for the following user
-#        user = "46143b2857b6"
-#        user_index = user_id_map[user]
-#        user_prediction = np.array(prediction[user_index].todense())
-#        user_top_n_index = np.argsort(-user_prediction)[:3][0]
-#        post_index = user_top_n_index[rank]
-#
-#        # list to hold top recommended posts
-#        post_id = []
-#        post_link = []
-#        post_title = []
-#
-#        # dataframe to find link
-#        dfa = read_data("list_articles")
-#
-#        for rank in np.arange(3):
-#            post_index = user_top_n_index[rank]
-#
-#            # loop over item_id_map, find post_id given index
-#            for pid, pidx in item_id_map.iteritems():
-#                if pidx ==  post_index:
-#
-#                    # get post id
-#                    post_id.append(pid)
-#
-#                    # get link and title
-#                    post_link.append(dfa.loc[dfa["post_id"] == pid]["link"].iloc[0])
-#                    post_title.append(dfa.loc[dfa["post_id"] == pid]["title"].iloc[0])
-#
-#
-#    
-#
-#
-#
-#
-#
-#
-#
-#
-#
-#
-#
-##    #-----------------------------------------------
-##    # Test ground
-##    #-----------------------------------------------
-##
-##    # Set the number of threads; you can increase this
-##    # if you have more physical cores available.
-##    NUM_THREADS = 2
-##    NUM_COMPONENTS = 30
-##    NUM_EPOCHS = 3
-##    ITEM_ALPHA = 1e-6
-##
-##    # Define a new model instance
-##    model = LightFM(loss='warp',
-##                    item_alpha=ITEM_ALPHA,
-##                    no_components=NUM_COMPONENTS)
-##    
-##    # Fit the hybrid model. Note that this time, we pass
-##    # in the item features matrix.
-##    model = model.fit(train,
-##                    user_features=user_features,
-##                    epochs=NUM_EPOCHS,
-##                    num_threads=NUM_THREADS)
-##    
-##
-##
-##
-##
-##    coo_matrix((x['user_id'] for x in get_data()),(x['post_id'] for x in get_data()))
-##
-##
-##
-##df = read_data("response")
-##
-##df = pd.read_csv('csv_file.csv', names=['user_id', 'group_id', 'group_value'])
-##df = df.pivot(index='user_id', columns='post_id')
-##mat = df.as_matrix())
-##
-##
-##
