@@ -1,5 +1,6 @@
 #!/Users/sche/anaconda/bin/python3
 from __future__ import division
+from datetime import date
 import csv, ast, random
 from read_data import read_data
 from sklearn.feature_extraction import DictVectorizer
@@ -27,7 +28,6 @@ def prepare_data():
 
     df = read_data("response")                                          # read raw data
     df = df.drop_duplicates(subset=["post_id","user_id"])               # remove duplicated entries
-    df["comment"] = 1                                                   # add dummy column representing rating
     columns_title=["user_id","post_id","comment"]                       # rearrange columns
     df=df.reindex(columns=columns_title)
     df.to_csv("data/model_input/df.csv", sep="\t", index=False)         # convert dataframe to tab deliminated file
@@ -70,6 +70,7 @@ def get_user_features():
     # convert dictionary to sparse matrix of user features
     from sklearn.feature_extraction import DictVectorizer
     dv = DictVectorizer()
+
     user_features = dv.fit_transform(df["keyword"])
     feature_names = dv.get_feature_names()
 
@@ -87,6 +88,7 @@ def train_model():
     # create map between user_id, post_id, user_features and internal indices
     data_cs.fit((x['user_id'] for x in get_data()),(x['post_id'] for x in get_data()))
     data_ws.fit((x['user_id'] for x in get_data()),(x['post_id'] for x in get_data()), user_features=user_features)
+    #user_biases = 
     
     #---------------------------
     # Building the interactions matrix
@@ -105,11 +107,11 @@ def train_model():
     #---------------------------
     # initialize model
     model_warp_cs = LightFM(learning_rate=0.05, loss='warp')
-    model_warp_ws = LightFM(learning_rate=0.05, loss='warp', no_components=15)
-    
+    model_warp_ws = LightFM(learning_rate=0.05, loss='warp', no_components=len(user_feature_names))
+
     # train model
-    model_warp_cs.fit(interactions_cs, epochs=10)
-    model_warp_ws.fit(interactions_ws, user_features=user_features, epochs=10)
+    model_warp_cs.fit(interactions_cs, epochs=30)
+    model_warp_ws.fit(interactions_ws, user_features=user_features, epochs=30)
     
     #---------------------------
     # make predictions
@@ -155,4 +157,11 @@ if __name__ == "__main__":
     # pickle prediction for production
     if(PickleModel):
         pickle_model(prediction_cs, prediction_ws, user_id_map, item_id_map)
+
+    # write to log for pipeline monitoring
+    with open("log", "a") as log:
+        log.write("\nStep 5. Successfully built a new model")
+
+    with open("log_model_update", "a") as log:
+        log.write("\nLast update: %s" % str(date.today()))
 

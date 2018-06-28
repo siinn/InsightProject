@@ -4,7 +4,7 @@ import csv, ast, random
 from read_data import read_data
 from sklearn.feature_extraction import DictVectorizer
 from lightfm.data import Dataset
-from lightfm import LightFM
+from lightfm import LightFM, cross_validation, evaluation
 import multiprocessing
 from functools import partial
 import numpy as np
@@ -16,10 +16,11 @@ import pickle
 # Options
 #--------------------------------------
 # create tab-delimited data
-PrepareData     = True
-RunValidation   = True
-
-
+PrepareData                 = False
+RunValidation               = True
+RunValidationRandom         = False
+RunValidationMostPopular    = False
+RunLearningCurve            = False
 
 
 # Prepare tab-delimited data
@@ -27,8 +28,7 @@ def prepare_data():
 
     df = read_data("response")                                          # read raw data
     df = df.drop_duplicates(subset=["post_id","user_id"])               # remove duplicated entries
-    df["comment"] = 1                                                   # add dummy column representing rating
-    columns_title=["user_id","post_id","comment"]                       # rearrange columns
+    columns_title=["user_id","post_id"]                                 # rearrange columns
     df=df.reindex(columns=columns_title)
     df.to_csv("data/model_input/df.csv", sep="\t", index=False)         # convert dataframe to tab deliminated file
     return
@@ -46,46 +46,7 @@ def get_train_data():
 # get test data
 def get_test_data():
 
-    return dpd.read_csv("data/model_input/df_test.csv")
-
-# train test split
-def test_train_split(group, fraction):
-
-    # user-item data for model
-    df_train = pd.read_csv("data/model_input/df.csv", sep='\t') 
-
-    # dataframe with user detail
-    df_user_detail = read_data("user_detail_medium")
-
-    # select group to drop users from
-    if (group ==0):
-        test_group = df_user_detail
-    else: 
-        test_group = df_user_detail.loc[df_user_detail["group_medium"]==group]
-
-    # get list of unique user
-    unique_users = list(test_group.drop_duplicates(subset="user_id")["user_id"])
-
-    # number of test users
-    n_test_users = int(len(unique_users) * fraction)
-
-    # shuffle and select users to drop
-    random.shuffle(unique_users)
-    df_test_data = pd.DataFrame(unique_users[:n_test_users])
-
-    # set rating to 0 for test users
-    for index, user in df_test_data.iterrows():
-        df_train.loc[df_train["user_id"]==user[0], "comment"] = 0
-
-    # check before store
-    #print(df_train.loc[df_train["user_id"]==df_test_data.iloc[0][0]])
-        
-    # save training set
-    df_train.to_csv("data/model_input/df_train.csv", sep="\t", index=False)
-    df_test_data.to_csv("data/model_input/df_test.csv", index=False)
-
-    return 
-    
+    return pd.read_csv("data/model_input/df_test.csv")
 
 # convert list to dictionary
 def list_to_dict(keywords):
@@ -110,22 +71,57 @@ def get_user_features():
     
     # convert string of list to dictionary with equal weight
     df["keyword"] = df["keyword"].apply(lambda x: list_to_dict(ast.literal_eval(x)))
-    
+
     # convert dictionary to sparse matrix of user features
     from sklearn.feature_extraction import DictVectorizer
     dv = DictVectorizer()
-    user_features = dv.fit_transform(df["keyword"])
+
+    user_features  = dv.fit_transform(df["keyword"])
     feature_names = dv.get_feature_names()
 
     return user_features, feature_names
 
+# train test split
+def test_train_split(fraction):
+
+    # user-item data for model
+    df_train = pd.read_csv("data/model_input/df.csv", sep='\t') 
+
+    # dataframe with user detail
+    df_user_detail = read_data("user_detail_medium")
+
+    # get list of unique user
+    unique_users = list(df_user_detail.drop_duplicates(subset="user_id")["user_id"])
+
+    # number of test users
+    n_test_users = int(len(unique_users) * fraction)
+
+    # shuffle and select users to drop
+    random.shuffle(unique_users)
+    df_test_data = pd.DataFrame(unique_users[:n_test_users])
+    df_train_users = pd.DataFrame(unique_users[n_test_users:])
+
+    # set rating to 0 for test users
+    for index, user in df_test_data.iterrows():
+        #df_train.loc[df_train["user_id"]==user[0], "comment"] = 0
+        df_train.drop(df_train[df_train["user_id"]==user[0]].index, inplace=True)
+
+    # check before store
+    #print(df_train.loc[df_train["user_id"]==df_test_data.iloc[0][0]])
+        
+    # save training set
+    df_train.to_csv("data/model_input/df_train.csv", sep="\t", index=False)
+    df_test_data.to_csv("data/model_input/df_test.csv", index=False)
+    df_train_users.to_csv("data/model_input/df_train_users.csv", index=False)
+
+    return 
+    
 
 # return precision and recall score given prediction and test data
 def precision_recall_score(test_data, prediction, user_id_map, item_id_map, k):
 
     precision_at_k_list = []
     recall_at_k_list = []
-    reciprocal_rank_list = []
 
     # retrieve post id of prediction for test users
     for index, row in test_data.iterrows():
@@ -135,7 +131,6 @@ def precision_recall_score(test_data, prediction, user_id_map, item_id_map, k):
         #----------------------------
         user_id = row[0]
         user_index = user_id_map[user_id]                                       # index of test users 
-        print(user_id)
         prediction_index_unsorted = np.array(prediction[user_index].todense())  # unsorted prediction of test users
         prediction_index = np.argsort(-prediction_index_unsorted)[0]            # sorted prediction
         prediction_post_id_upto_k_prec = []                                     # list to hold prediction post id
@@ -171,33 +166,14 @@ def precision_recall_score(test_data, prediction, user_id_map, item_id_map, k):
         match_precision = set(prediction_post_id_upto_k_prec) & set(truth_post_id) 
         match_recall    = set(prediction_post_id_upto_k_rec) & set(truth_post_id) 
 
-        # find reciprocal rank
-        reciprocal_rank_for_user = []
-        for i, true_post in enumerate(truth_post_id):
-            post_found = False
-            for j, pred_post in enumerate(prediction_post_id_upto_k_prec):
-                if (true_post == pred_post):
-                    reciprocal_rank_for_user.append(1. / (j+1))     # add to reciprocal rank
-                    post_found = True
-            if (post_found == False):
-                reciprocal_rank_for_user.append(0)                  # reciprocal rank = 0
-
-      
-        # average reciprocal rank of this user
-        if (len(reciprocal_rank_for_user) > 0):
-            ave_recip = sum(reciprocal_rank_for_user) / len(reciprocal_rank_for_user)
-        else:
-            ave_recip = 0 
-
         # append the results
         precision_at_k_list.append(len(match_precision) / k[0])
-        reciprocal_rank_list.append(ave_recip)
         if (len(truth_post_id) > 0):
             recall_at_k_list.append(len(match_recall) / len(truth_post_id))
         else:
             recall_at_k_list.append(0)
 
-    return precision_at_k_list, recall_at_k_list, reciprocal_rank_list
+    return precision_at_k_list, recall_at_k_list
 
 # merge scores from multiprocessing
 def merge_scores(mp_result):
@@ -205,26 +181,238 @@ def merge_scores(mp_result):
     # container to hold merged results
     precision_at_k_merged  = []
     recall_at_k_merged     = []
-    reciprocal_rank_merged = []
 
     for mp in mp_result:
         precision_at_k_merged  = precision_at_k_merged + mp[0]
         recall_at_k_merged     = recall_at_k_merged + mp[1]
-        reciprocal_rank_merged = reciprocal_rank_merged + mp[2]
 
-    return precision_at_k_merged, recall_at_k_merged, reciprocal_rank_merged
+    return precision_at_k_merged, recall_at_k_merged
 
 
-def run_validation(test_group, test_fraction, max_val):
+def run_validation_random_model(test_fraction, max_val):
 
     # containers to hold results
-    ave_precision_at_k_warp_cs  = []
-    ave_recall_at_k_warp_cs     = []
-    ave_reciprocal_rank_warp_cs = []
+    ave_precision_at_k  = []
+    ave_recall_at_k     = []
+        
+    # choose k for precision and recall
+    k = [10, 10]
 
-    ave_precision_at_k_warp_ws  = []
-    ave_recall_at_k_warp_ws     = []
-    ave_reciprocal_rank_warp_ws = []
+    # entire train data to randomly select item
+    df_train = pd.read_csv("data/model_input/df.csv", sep='\t') 
+
+    # list of unique items available
+    df_item = df_train["post_id"].drop_duplicates().tolist()
+
+    # perform validation
+    validation_itr = 0
+
+    while (validation_itr < max_val):
+
+        print("Start validating random selection, iteration %s" %validation_itr)
+
+        # prevent random failure to abort entire job
+        try:
+
+            # count
+            validation_itr += 1
+
+            # containers to hold results
+            precision_at_k_list = []
+            recall_at_k_list = []
+
+            # prepare train and test data by setting rating to 0 for random users
+            test_train_split(test_fraction)
+
+            # test data to optain users in test set
+            df_test = pd.read_csv("data/model_input/df_test.csv", sep='\t')
+
+            # loop over each test user
+            for index, row in df_test.iterrows():
+
+                # user id 
+                user_id = row[0]
+
+                # list of item user commented
+                truth_post_id = df_train.loc[df_train["user_id"]==user_id]["post_id"].tolist()
+
+                # shuffle item for random recommendation
+                random.shuffle(df_item)
+                prediction_post_id_upto_k_prec = df_item[:k[0]+1]
+                prediction_post_id_upto_k_rec = df_item[:k[1]+1]
+
+                # common articles between prediction upto k and truth for precision
+                match_precision = set(prediction_post_id_upto_k_prec) & set(truth_post_id) 
+                match_recall    = set(prediction_post_id_upto_k_rec) & set(truth_post_id) 
+
+                # append the results
+                # multiplied by test_fraction to simulate known positive in training sample
+                precision_at_k_list.append(len(match_precision) / k[0] * (test_fraction))
+                if (len(truth_post_id) > 0):
+                    recall_at_k_list.append(len(match_recall) / len(truth_post_id) * (test_fraction))
+                else:
+                    recall_at_k_list.append(0)
+
+
+            #---------------------------
+            # calculate validation score
+            #---------------------------
+            # append score from each iteration to results
+            ave_precision_at_k.append(sum(precision_at_k_list) / len(precision_at_k_list))
+            ave_recall_at_k.append(sum(recall_at_k_list) / len(recall_at_k_list))
+
+        except:
+            print("teration %s failed. Skipping.." %validation_itr)
+
+
+    print("Validation score for random selection")
+    print(ave_precision_at_k  )
+    print(ave_recall_at_k     )
+
+    df_result = pd.DataFrame({
+        'precision_at_k_random': ave_precision_at_k,
+        'recall_at_k_random': ave_recall_at_k,
+        })
+
+    # save to file
+    df_result.to_csv("data/validation/df.random.csv", index=False)
+
+    return
+
+
+
+def run_validation_mostpopular_model(test_fraction, max_val):
+
+    # containers to hold results
+    ave_precision_at_k  = []
+    ave_recall_at_k     = []
+        
+    # choose k for precision and recall
+    k = [10, 10]
+
+    # entire train data to the most popular select item
+    df_train = pd.read_csv("data/model_input/df.csv", sep='\t') 
+
+    # load list of articles
+    dfa = read_data("list_articles")
+
+    # convert string to float
+    dfa["claps"] = dfa["claps"].apply(value_to_float)
+    dfa["response"] = dfa["response"].apply(value_to_float)
+
+    # remove duplicates
+    dfa = dfa.drop_duplicates(subset="post_id", keep="first")
+
+    # sort by number of comments recieved
+    dfa = dfa.sort_values(by=["response"], ascending=False)
+
+    # list of unique items available sorted by popularity
+    df_item = dfa["post_id"].tolist()
+
+    # perform validation
+    validation_itr = 0
+
+    while (validation_itr < max_val):
+
+        print("Start validating most popular, iteration %s" %validation_itr)
+
+        # prevent random failure to abort entire job
+        try:
+
+            # count
+            validation_itr += 1
+
+            # containers to hold results
+            precision_at_k_list = []
+            recall_at_k_list = []
+
+            # prepare train and test data by setting rating to 0 for random users
+            test_train_split(test_fraction)
+
+            # test data to optain users in test set
+            df_test = pd.read_csv("data/model_input/df_test.csv", sep='\t')
+
+            # loop over each test user
+            for index, row in df_test.iterrows():
+
+                # user id 
+                user_id = row[0]
+
+                # list of item user commented
+                truth_post_id = df_train.loc[df_train["user_id"]==user_id]["post_id"].tolist()
+
+                # shuffle item for random recommendation
+                prediction_post_id_upto_k_prec = df_item[:k[0]+1]
+                prediction_post_id_upto_k_rec = df_item[:k[1]+1]
+
+                # common articles between prediction upto k and truth for precision
+                match_precision = set(prediction_post_id_upto_k_prec) & set(truth_post_id) 
+                match_recall    = set(prediction_post_id_upto_k_rec) & set(truth_post_id) 
+
+                # append the results
+                # multiplied by test_fraction to simulate known positive in training sample
+                precision_at_k_list.append(len(match_precision) / k[0] * (test_fraction))
+                if (len(truth_post_id) > 0):
+                    recall_at_k_list.append(len(match_recall) / len(truth_post_id) * (test_fraction))
+                else:
+                    recall_at_k_list.append(0)
+
+
+            #---------------------------
+            # calculate validation score
+            #---------------------------
+            # append score from each iteration to results
+            ave_precision_at_k.append(sum(precision_at_k_list) / len(precision_at_k_list))
+            ave_recall_at_k.append(sum(recall_at_k_list) / len(recall_at_k_list))
+
+        except:
+            print("teration %s failed. Skipping.." %validation_itr)
+
+
+    print("Validation score for most popular recommendation")
+    print(ave_precision_at_k  )
+    print(ave_recall_at_k     )
+
+    df_result = pd.DataFrame({
+        'precision_at_k_mostpopular': ave_precision_at_k,
+        'recall_at_k_mostpopular': ave_recall_at_k,
+        })
+
+    # save to file
+    df_result.to_csv("data/validation/df.mostpopular.csv", index=False)
+
+    return
+
+
+
+def value_to_float(x):
+
+    if type(x) == float or type(x) == int:
+        x = str(x)
+
+    if (('K' in x) or ('k' in x)):
+        x = x.replace(".","")
+        x = x.replace("k","000")
+        x = x.replace("K","000")
+
+    try:
+        x = float(x)
+    except:
+        x = 0.0
+
+    return x
+
+
+def run_validation(test_fraction, max_val):
+
+    # containers to hold results
+    ave_precision_at_k_cs   = []
+    ave_recall_at_k_cs      = []
+    ave_auc_score_cs        = []
+
+    ave_precision_at_k_ws   = []
+    ave_recall_at_k_ws      = []
+    ave_auc_score_ws        = []
    
 
     # perform validation
@@ -232,133 +420,171 @@ def run_validation(test_group, test_fraction, max_val):
 
     while (validation_itr < max_val):
 
-        print("Start validation iteration %s" %validation_itr)
+        print("Start validating cold, warm start, iteration %s" %validation_itr)
 
-        # count
-        validation_itr += 1
+        # prevent random failure to abort entire job
+        try:
 
-        # uesr features
-        user_features, user_feature_names = get_user_features()
-        print(repr(user_features))
+            # count
+            validation_itr += 1
 
-        # create data_train
-        data_train_cs = Dataset()       # cold start
-        data_train_ws = Dataset(user_identity_features=True)        # warm start
+            # create data_train
+            data_cs = Dataset()
+            data_ws = Dataset(user_identity_features=True)
 
-        # prepare train and test data by setting rating to 0 for random users
-        test_train_split(test_group, test_fraction)
+            # user featurs
+            user_features, user_feature_names = get_user_features()
+            print(user_feature_names)
 
-        # create map between user_id, post_id, user_features and internal indices
-        data_train_cs.fit((x['user_id'] for x in get_train_data()),(x['post_id'] for x in get_train_data()))
-        data_train_ws.fit((x['user_id'] for x in get_train_data()),(x['post_id'] for x in get_train_data()), user_features=user_features)
-        
-        # print shape
-        num_users, num_items = data_train_cs.interactions_shape()
-        print('Num users: {}, num_items {}.'.format(num_users, num_items))
-        
-        #---------------------------
-        # Building the interactions matrix
-        #---------------------------
-        # create interaction matrix to optimize
-        (interactions_cs, weights_cs) = data_train_cs.build_interactions(((x['user_id'], x['post_id']) for x in get_train_data()))
-        (interactions_ws, weights_ws) = data_train_ws.build_interactions(((x['user_id'], x['post_id']) for x in get_train_data()))
-        print(repr(interactions_cs))
-        print(repr(interactions_ws))
-
-        # retrieve mapping from dataset
-        user_id_map, user_feature_map, item_id_map, item_feature_map = data_train_cs.mapping()
-
-        #---------------------------
-        # train model
-        #---------------------------
-        #model_bpr = LightFM(learning_rate=0.05, loss='logistic')
-        model_warp_cs = LightFM(learning_rate=0.05, loss='warp')
-        model_warp_ws = LightFM(learning_rate=0.05, loss='warp', no_components=15)
-
-        #model_bpr.fit(interactions_cs, epochs=10)
-        model_warp_cs.fit(interactions_cs, epochs=10)
-        model_warp_ws.fit(interactions_ws, user_features=user_features, epochs=10)
-
-        #---------------------------
-        # make predictions
-        #---------------------------
-
-        # make predictions for all user
-        #prediction_bpr     = model_bpr.predict_rank(interactions_cs)
-        prediction_warp_cs = model_warp_cs.predict_rank(interactions_cs)
-        prediction_warp_ws = model_warp_ws.predict_rank(interactions_ws, user_features=user_features)
-
-        #---------------------------
-        # calculate validation score
-        #---------------------------
-        # choose k for precision and recall
-        k = [5, 3]
-
-        # bpr
-        #precision_recall_score_mp_bpr     = partial( precision_recall_score, prediction = prediction_bpr,
-        #                                            user_id_map = user_id_map, item_id_map = item_id_map, k = k)
-        #test_data_itr_bpr= pd.read_csv('data/model_input/df_test.csv', chunksize=30)         # test data as iterable
-        #pool_bpr         = multiprocessing.Pool(processes=8)                                 # setup pool
-        #results_bpr      = pool_bpr.map(precision_recall_score_mp_bpr, test_data_itr_bpr)    # run MP
-        #pool_bpr.close
-
-        # cold start
-        precision_recall_score_mp_warp_cs = partial( precision_recall_score, prediction = prediction_warp_cs,
-                                                    user_id_map = user_id_map, item_id_map = item_id_map, k = k)
-        test_data_itr_cs = pd.read_csv('data/model_input/df_test.csv', chunksize=30)         # test data as iterable
-        pool_cs          = multiprocessing.Pool(processes=8)                                 # setup pool
-        results_warp_cs  = pool_cs.map(precision_recall_score_mp_warp_cs, test_data_itr_cs)  # run MP
-        pool_cs.close
-
-        # warm start
-        precision_recall_score_mp_warp_ws = partial( precision_recall_score, prediction = prediction_warp_ws,
-                                                    user_id_map = user_id_map, item_id_map = item_id_map, k = k)
-        test_data_itr_ws = pd.read_csv('data/model_input/df_test.csv', chunksize=30)
-        pool_ws          = multiprocessing.Pool(processes=8)
-        results_warp_ws  = pool_ws.map(precision_recall_score_mp_warp_ws, test_data_itr_ws)   # run MP
-        pool_ws.close
-
-
-        # TEST________________________________--
-        #precision_recall_score(test_data, prediction, user_id_map, item_id_map, k):
+            # create map between user_id, post_id, user_features and internal indices
+            data_cs.fit((x['user_id'] for x in get_data()),(x['post_id'] for x in get_data()))
+            data_ws.fit((x['user_id'] for x in get_data()),(x['post_id'] for x in get_data()), user_features=user_features)
             
+            # print shape
+            num_users, num_items = data_ws.interactions_shape()
+            print('Num users: {}, num_items {}.'.format(num_users, num_items))
+            
+            #---------------------------
+            # Building the interactions matrix
+            #---------------------------
+            # create interaction matrix to optimize
+            (interactions_cs, weights_cs) = data_cs.build_interactions(((x['user_id'], x['post_id'])) for x in get_data())
+            (interactions_ws, weights_ws) = data_ws.build_interactions(((x['user_id'], x['post_id'])) for x in get_data())
+            print(repr(interactions_ws))
+
+            # retrieve mapping from dataset
+            user_id_map_cs, user_feature_map_cs, item_id_map_cs, item_feature_map_cs = data_cs.mapping()
+            user_id_map_ws, user_feature_map_ws, item_id_map_ws, item_feature_map_ws = data_ws.mapping()
+
+            # split test and train
+            interaction_train_cs, interaction_test_cs = cross_validation.random_train_test_split(interactions_cs, test_fraction)
+            interaction_train_ws, interaction_test_ws = cross_validation.random_train_test_split(interactions_ws, test_fraction)
+
+            #---------------------------
+            # train model
+            #---------------------------
+            model_cs  = LightFM(learning_rate=0.05, loss='warp')
+            model_ws  = LightFM(learning_rate=0.05, loss='warp', no_components=len(user_feature_names))
+
+            model_cs.fit(interaction_train_cs, epochs=30)
+            model_ws.fit(interaction_train_ws, user_features=user_features, epochs=30)
+
+            #---------------------------
+            # make predictions
+            #---------------------------
+            precision_at_k_cs = evaluation.precision_at_k(model_cs, interaction_test_cs, interaction_train_cs)
+            recall_at_k_cs = evaluation.recall_at_k(model_cs, interaction_test_cs, interaction_train_cs)
+            auc_score_cs = evaluation.auc_score(model_cs, interaction_test_cs, interaction_train_cs)
+
+            precision_at_k_ws = evaluation.precision_at_k(model_ws, interaction_test_ws, interaction_train_ws, user_features=user_features)
+            recall_at_k_ws = evaluation.recall_at_k(model_ws, interaction_test_ws, interaction_train_ws, user_features=user_features)
+            auc_score_ws = evaluation.auc_score(model_ws, interaction_test_ws, interaction_train_ws, user_features=user_features)
+
+            # append score from each iteration to results
+            ave_precision_at_k_cs.append(sum(precision_at_k_cs) / len(precision_at_k_cs))
+            ave_recall_at_k_cs.append(sum(recall_at_k_cs) / len(recall_at_k_cs))
+            ave_auc_score_cs.append(sum(auc_score_cs) / len(auc_score_cs))
+
+            ave_precision_at_k_ws.append(sum(precision_at_k_ws) / len(precision_at_k_ws))
+            ave_recall_at_k_ws.append(sum(recall_at_k_ws) / len(recall_at_k_ws))
+            ave_auc_score_ws.append(sum(auc_score_ws) / len(auc_score_ws))
 
 
-        # merge results from multiprocessing
-        #precision_at_k_bpr, recall_at_k_bpr, reciprocal_rank_bpr = merge_scores(results_bpr)
-        precision_at_k_warp_cs, recall_at_k_warp_cs, reciprocal_rank_warp_cs = merge_scores(results_warp_cs)
-        precision_at_k_warp_ws, recall_at_k_warp_ws, reciprocal_rank_warp_ws = merge_scores(results_warp_ws)
-
-        # append score from each iteration to results
-        ave_precision_at_k_warp_cs.append(sum(precision_at_k_warp_cs) / len(precision_at_k_warp_cs))
-        ave_recall_at_k_warp_cs.append(sum(recall_at_k_warp_cs) / len(recall_at_k_warp_cs))
-        ave_reciprocal_rank_warp_cs.append(sum(reciprocal_rank_warp_cs) / len(reciprocal_rank_warp_cs))
-
-        ave_precision_at_k_warp_ws.append(sum(precision_at_k_warp_ws) / len(precision_at_k_warp_ws))
-        ave_recall_at_k_warp_ws.append(sum(recall_at_k_warp_ws) / len(recall_at_k_warp_ws))
-        ave_reciprocal_rank_warp_ws.append(sum(reciprocal_rank_warp_ws) / len(reciprocal_rank_warp_ws))
+        except:
+            print("teration %s failed. Skipping.." %validation_itr)
 
 
-    print("Validation score for cold start")
-    print(ave_precision_at_k_warp_cs  )
-    print(ave_recall_at_k_warp_cs     )
-    print(ave_reciprocal_rank_warp_cs )
-    print("Validation score for warm start")
-    print(ave_precision_at_k_warp_ws  )
-    print(ave_recall_at_k_warp_ws     )
-    print(ave_reciprocal_rank_warp_ws )
+    print("Validation score for test")
+    print(ave_precision_at_k_cs  )
+    print(ave_recall_at_k_cs     )
+    print(ave_auc_score_cs )
+    print(ave_precision_at_k_ws  )
+    print(ave_recall_at_k_ws     )
+    print(ave_auc_score_ws )
 
     df_result = pd.DataFrame({
-        'precision_at_k_cs': ave_precision_at_k_warp_cs,
-        'recall_at_k_cs': ave_recall_at_k_warp_cs,
-        'reciprocal_rank_cs': ave_reciprocal_rank_warp_cs,
-        'precision_at_k_ws': ave_precision_at_k_warp_ws,
-        'recall_at_k_ws': ave_recall_at_k_warp_ws,
-        'reciprocal_rank_ws': ave_reciprocal_rank_warp_ws,
+        'precision_at_k_cs': ave_precision_at_k_cs,
+        'recall_at_k_cs': ave_recall_at_k_cs,
+        'auc_score_cs': ave_auc_score_cs,
+        'precision_at_k_ws': ave_precision_at_k_ws,
+        'recall_at_k_ws': ave_recall_at_k_ws,
+        'auc_score_ws': ave_auc_score_ws,
         })
 
     # save to file
-    df.to_csv("data/validation/df.csv", index=False)
+    df_result.to_csv("data/validation/df.csv", index=False)
+
+    return
+
+
+
+def run_learning_curve(test_fraction, max_epoch):
+
+    # create data_train
+    data  = Dataset(user_identity_features=True)
+    
+    # user featurs
+    user_features, user_feature_names = get_user_features()
+    
+    # create map between user_id, post_id, user_features and internal indices
+    data.fit((x['user_id'] for x in get_data()),(x['post_id'] for x in get_data()), user_features=user_features)
+    
+    # print shape
+    num_users, num_items = data.interactions_shape()
+    print('Num users: {}, num_items {}.'.format(num_users, num_items))
+    
+    #---------------------------
+    # Building the interactions matrix
+    #---------------------------
+    # create interaction matrix to optimize
+    (interactions, weights) = data.build_interactions(((x['user_id'], x['post_id'])) for x in get_data())
+    print(repr(interactions))
+    
+    # retrieve mapping from dataset
+    user_id_map, user_feature_map, item_id_map, item_feature_map = data.mapping()
+    
+    # split test and train
+    interaction_train, interaction_test = cross_validation.random_train_test_split(interactions, test_fraction)
+    
+    #---------------------------
+    # train model
+    #---------------------------
+    model_cs  = LightFM(learning_rate=0.05, loss='warp')
+    model_ws  = LightFM(learning_rate=0.05, loss='warp', no_components=len(user_feature_names))
+
+    precision_cs = []
+    precision_ws = []
+
+    recall_cs = []
+    recall_ws = []
+
+    for epoch in range(int(max_epoch/2)):
+
+        model_cs.fit(interaction_train, epochs=int(epoch*2))
+        model_ws.fit(interaction_train, user_features=user_features, epochs=int(epoch*2))
+   
+        # calculate precision and recall for each epoch
+        precision_at_k_cs = evaluation.precision_at_k(model_cs, interaction_test, interaction_train)
+        precision_at_k_ws = evaluation.precision_at_k(model_ws, interaction_test, interaction_train, user_features=user_features)
+
+        recall_at_k_cs = evaluation.recall_at_k(model_cs, interaction_test, interaction_train)
+        recall_at_k_ws = evaluation.recall_at_k(model_ws, interaction_test, interaction_train, user_features=user_features)
+
+        # append to result
+        precision_cs.append(sum(precision_at_k_cs) / len(precision_at_k_cs))
+        precision_ws.append(sum(precision_at_k_ws) / len(precision_at_k_ws))
+        recall_cs.append(sum(recall_at_k_cs) / len(recall_at_k_cs))
+        recall_ws.append(sum(recall_at_k_ws) / len(recall_at_k_ws))
+
+    df_result = pd.DataFrame({
+        "precision_cs": precision_cs,
+        "precision_ws": precision_ws,
+        "recall_cs": recall_cs,
+        "recall_ws": recall_ws,
+        })
+
+    # save to file
+    df_result.to_csv("data/validation/df.epoch.csv", index=False)
 
     return
 
@@ -370,7 +596,13 @@ if __name__ == "__main__":
         prepare_data()
 
     if(RunValidation):
-        run_validation(0, 0.2, 2)       # test group, test size, max iteration
+        run_validation(0.2, 100)
 
+    if(RunValidationRandom):
+        run_validation_random_model(0.2, 100)
 
-
+    if(RunValidationMostPopular):
+        run_validation_mostpopular_model(0.2, 100)
+    
+    if(RunLearningCurve):
+        run_learning_curve(0.2, 80)

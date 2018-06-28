@@ -18,35 +18,29 @@ import collections
 parser = argparse.ArgumentParser()
 
 # add options
-parser.add_argument("--download_articles", help="Download list of articles given range", nargs=6, type=int)
-parser.add_argument("--get_response", help="Get response from list of articles. Option = 0, 1, 2, ..", nargs=1, type=int)
-parser.add_argument("--get_userinfo", help="Get detailed user informations. Option = 0, 1, 2, ..", nargs=1, type=int)
+parser.add_argument("--update", help="Download list of articles given range", nargs=2, type=str)
 
 # parse arguments
 args = parser.parse_args()
 
-if args.download_articles:
-    sdy  = int(args.download_articles[0])
-    sdm  = int(args.download_articles[1])
-    sdd  = int(args.download_articles[2])
-    edy =  int(args.download_articles[3])
-    edm =  int(args.download_articles[4])
-    edd =  int(args.download_articles[5])
-
-if args.get_response:
-    chunk_index = int(args.get_response[0])
-
-if args.get_userinfo:
-    chunk_index_userinfo = int(args.get_userinfo[0])
+if args.update:
+    # update model from start date 0:00 am to end date 0:00
+    # so actual end date isn't counted.
+    sdy  = int(args.update[0].split(".")[0])
+    sdm  = int(args.update[0].split(".")[1])
+    sdd  = int(args.update[0].split(".")[2])
+    edy  = int(args.update[1].split(".")[0])
+    edm  = int(args.update[1].split(".")[1])
+    edd  = int(args.update[1].split(".")[2])
 
 #------------------------------------------
 # option for script
 #------------------------------------------
-DownloadArticleList = args.download_articles
-GetResponses        = args.get_response
-GetUserInfo         = args.get_userinfo
-ExtractMostCommon   = False
+DownloadArticleList = True
+GetResponses        = True
+GetUserInfo         = True
 DecorateGroup       = True
+ExtractMostCommon   = False # not part of regular update
 
 
 
@@ -247,33 +241,30 @@ def download_article_list(sdy, sdm, sdd, edy, edm, edd):
     df.to_csv("data/list_articles/articles_%s-%s.csv" %(sd, ed), encoding='utf-8', index=False)
     print("Successfully scraped articles!")
 
+    # write to log for pipeline monitoring
+    with open("log", "a") as log:
+        log.write("\nStep 1. Successfully scraped articles: %s-%s" %(sd, ed))
+
     return
 
 
-def get_user_responses():
+def get_user_responses(sdy, sdm, sdd, edy, edm, edd):
 
-    # read multiple csv
-    df_article = read_data("list_articles")
+    # define start and end date
+    sd = date(sdy, sdm, sdd)
+    ed = date(edy, edm, edd)
+
+    # read csv for given date range
+    df_article = pd.read_csv("data/list_articles/articles_%s-%s.csv" %(sd, ed))
     
     # drop duplicates
     df_article = df_article.drop_duplicates(subset=["post_id"], keep="first")
     
-    # chunk size
-    n = 500
-    
-    # split dataframe into subset
-    list_df_article = [df_article[i:i+n] for i in range(0,df_article.shape[0],n)]
-    
-    print("Getting responses from dataframe %s / %s" % (chunk_index+1, len(list_df_article)))
-    
-    # sub dataframe of list of articles
-    df_sub = list_df_article[chunk_index]
-
     # drop na
-    df_sub = df_sub.dropna(subset=["post_id"])
+    df_article = df_article.dropna(subset=["post_id"])
     
     # get responses from all post_id
-    responses = get_post_responses(df_sub["post_id"])
+    responses = get_post_responses(df_article["post_id"])
     
     # create dataframe
     df_user = pd.DataFrame()
@@ -286,43 +277,48 @@ def get_user_responses():
         df_user = df_user.append(pd.DataFrame([{"user_id":response_user_id, "post_id":post_id}]))
     
     # save to csv
-    df_user.to_csv("data/response/users_response_%s.csv" % chunk_index, encoding='utf-8', index=False)
+    df_user.to_csv("data/response/users_response_%s-%s.csv" % (sd, ed), encoding='utf-8', index=False)
 
-    print("Successfully retrieved responses from dataframe %s / %s" % (chunk_index+1, len(list_df_article)+1))
+    print("Successfully retrieved responses for dates between %s-%s" % (sd, ed))
+
+    # write to log for pipeline monitoring
+    with open("log", "a") as log:
+        log.write("\nStep 2. Successfully retrieved responses for dates between %s-%s" % (sd, ed))
 
     return
 
 
 
-def get_user_information():
+def get_user_information(sdy, sdm, sdd, edy, edm, edd):
 
-    # read dataframe with raw user information
-    df = read_data("response")
+    # define start and end date
+    sd = date(sdy, sdm, sdd)
+    ed = date(edy, edm, edd)
+
+    print("Getting user information for dates %s-%s" % (sd, ed))
+
+    # read csv for given date range
+    df = pd.read_csv("data/response/users_response_%s-%s.csv" %(sd, ed))
 
     # merge rows of same user
     df = df.groupby(["user_id"]).agg({"post_id":lambda x: ', '.join(x)})
 
     # reset index
     df.reset_index(level=0, inplace=True)
-
-    # chunk size
-    n = 600
-    
-    # split dataframe into subset
-    list_df = [df[i:i+n] for i in range(0,df.shape[0],n)]
-    
-    print("Getting user information from dataframe %s / %s" % (chunk_index_userinfo+1, len(list_df)))
-    
-    # sub dataframe of list of articles
-    df_sub = list_df[chunk_index_userinfo]
     
     # retrieve user information
-    df_sub["userinfo"] = df_sub["user_id"].apply(get_userinfo)
+    df["userinfo"] = df["user_id"].apply(get_userinfo)
     
     # save to csv
-    df_sub.to_csv("data/user_detail/users_%s.csv" % chunk_index_userinfo, encoding='utf-8', index=False)
+    df.to_csv("data/user_detail/users_%s-%s.csv" % (sd, ed), encoding='utf-8', index=False)
 
-    print("Successfully retrieved user information from dataframe %s / %s" % (chunk_index_userinfo+1, len(list_df)+1))
+    print("Successfully retrieved user information for dates %s-%s" % (sd, ed))
+
+    # write to log for pipeline monitoring
+    with open("log", "a") as log:
+        log.write("\nStep 3. Successfully retrieved user information for dates between %s-%s" % (sd, ed))
+
+    return
 
 
 
@@ -364,7 +360,7 @@ def extract_most_common_keywords():
         keywords_most_common.pop(common_words, None)
 
     # select top keywords from all users
-    keywords_most_common = collections.Counter(keywords_most_common).most_common(80)
+    keywords_most_common = collections.Counter(keywords_most_common).most_common(20)
 
     # save most common keywords for visualization
     pd.DataFrame.from_dict(dict(keywords_most_common), orient="index").to_csv("data/keywords/df.csv")
@@ -374,10 +370,14 @@ def extract_most_common_keywords():
 
     return
 
-def decorate_group():
+def decorate_group(sdy, sdm, sdd, edy, edm, edd):
+
+    # define start and end date
+    sd = date(sdy, sdm, sdd)
+    ed = date(edy, edm, edd)
 
     # read dataframe containing detailed user information
-    df = read_data("user_detail")
+    df = pd.read_csv("data/user_detail/users_%s-%s.csv" % (sd, ed))
 
     # method used for user classification
     method = "medium"
@@ -424,8 +424,12 @@ def decorate_group():
     df["keyword"] = df["bio"].apply(trim_bio)
 
     # save to csv
-    df.to_csv("data/user_detail_medium/df.csv", encoding='utf-8', index=False)
+    df.to_csv("data/user_detail_medium/df_%s-%s.csv" % (sd, ed), encoding='utf-8', index=False)
     print("Successfully decorated dataframe with user group")
+
+    # write to log for pipeline monitoring
+    with open("log", "a") as log:
+        log.write("\nStep 4. Successfully decorated user information for dates between %s-%s" % (sd, ed))
 
     return
 
@@ -515,18 +519,19 @@ if __name__ == '__main__':
 
     # get responses from list of articles on medium
     if (GetResponses):
-        get_user_responses()
+        get_user_responses(sdy, sdm, sdd, edy, edm, edd)
 
     # get user information from medium
     if (GetUserInfo):
-        get_user_information()
+        get_user_information(sdy, sdm, sdd, edy, edm, edd)
+    # decorate dataframe with user groups by keyword matching
+    if (DecorateGroup):
+        decorate_group(sdy, sdm, sdd, edy, edm, edd) 
 
     # extract most common keywords from corpus of user profile
+    # not part of regular update
     if (ExtractMostCommon):
         extract_most_common_keywords()
 
-    # decorate dataframe with user groups by keyword matching
-    if (DecorateGroup):
-        decorate_group()
-    
 
+    print("Done")
