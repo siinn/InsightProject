@@ -38,8 +38,11 @@ def plot_precision_at_k(val_result, val_result_random, val_result_popular):
     #ax.set_ylim([0,1])
     ax.set_xlabel("Precision at 10", size = 20)
     ax.set_ylabel("Test sample", size = 20)
+    ax.set_xticks(ax.get_xticks()[::2])
+    plt.xticks(fontsize=20)
+    plt.yticks(fontsize=20)
     plt.title("Precision at 10", size = 20)
-    plt.legend(loc=1, prop={'size': 15})
+    plt.legend(loc=1, prop={'size': 20})
 
     # save figure
     plt.savefig("plots/precision_at_k_%s.png" % val_result[:-3])
@@ -66,12 +69,13 @@ def plot_recall_at_k(val_result, val_result_random, val_result_popular):
     sns.distplot( df_popular["recall_at_k_mostpopular"], bins=bins, ax=ax, kde=False, label='Most popular', color="orange", hist_kws=hist_kws)
     
     # customize plots
-    #ax.set_xlim([0.7,1.0])
-    #ax.set_ylim([0,1])
     ax.set_xlabel("Recall at 10", size = 20)
     ax.set_ylabel("Test sample", size = 20)
+    ax.set_xticks(ax.get_xticks()[::2])
+    plt.xticks(fontsize=20)
+    plt.yticks(fontsize=20)
     plt.title("Recall at 10", size = 20)
-    plt.legend(loc=1, prop={'size': 15})
+    plt.legend(loc=1, prop={'size': 20})
 
     # save figure
     plt.savefig("plots/recall_at_k_%s.png" % val_result[:-3])
@@ -106,8 +110,11 @@ def plot_f1_at_k(val_result, val_result_random, val_result_popular):
     # customize plots
     ax.set_xlabel("F1 score", size = 20)
     ax.set_ylabel("Test sample", size = 20)
+    ax.set_xticks(ax.get_xticks()[::2])
+    plt.xticks(fontsize=20)
+    plt.yticks(fontsize=20)
     plt.title("F1 score", size = 20)
-    plt.legend(loc=1, prop={'size': 15})
+    plt.legend(loc=1, prop={'size': 20})
 
     # save figure
     plt.savefig("plots/f1_at_k_%s.png" % val_result[:-3])
