@@ -1,9 +1,8 @@
 # Improved Recommender System for Medium
-> Improved collaborative filtering for new users on Medium by engineering new user features using <b>LightFM</b> model. User features are extracted from user profiles using <b>tokenizer NLTK</b> and <b>Rake NLTK</b>. Data is collected frmo Medium by web scraping using Python. Web application is built using Python, Flask, Dash and hosted on AWS.
 
-**Table of Contents:**
-- Table of Contents
-{:toc}
+## Summary
+_Improved collaborative filtering for new users on Medium by engineering new user features using <b>LightFM</b> model. User features are extracted from user profiles using <b>tokenizer NLTK</b> and <b>Rake NLTK</b>. Data is collected frmo Medium by web scraping using Python. Web application is built using Python, Flask, Dash and hosted on AWS._
+
 
 ## Introduction
 
