@@ -114,7 +114,7 @@ The precision and recall at 10 scores are repeatedly calculated for these models
 The plots show that the warm start model performs better than the cold start model. The most-popular and random models show relatively poor performance as expected.
 
 Similarly, the distribution of F1 score of these models are shown below after repeating the calculation for 100 times.
-<div align="center"><img src="plots/f1_at_k_df..png" width="500px"></div>
+<div align="center"><img src="plots/f1_at_k_df.png" width="500px"></div>
 The plot shows that the warm start model performs better than the cold start model by 22%.
 
 
