@@ -113,7 +113,8 @@ Similarly, the distribution of F1 score of these models are shown below after re
 <div align="center"><img src="plots/f1_at_k_df.png" width="500px"></div>
 The plot shows that the warm start model performs better than the cold start model by 22%.
 
-
+## Web application
+A web application is built to demonstrate the recommender system. The web app is built using Python, Flask, Dash, and it is hosted on the AWS. Using the date pipeline and the cron job, the model updates itself everyday. For faster processing, __PySpark__ is used to handle dataframes in the backend. The web application can be found at <a href="http://lightmedium.today">http://lightmedium.today</a>.
 
 ## Conclusion
 In this projects, the recommender system is built for Medium using user comments are positive signals. In attempt to solve cold start problem, the user features are engineered from the user profiles on Medium. The results shows this method has a potential to help solving the cold start problem for Medium. This means that it can help Medium to
