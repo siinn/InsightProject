@@ -16,7 +16,7 @@ In this project, I introduced new user features extracted from user profiles to 
 
 
 ## Data Collection
-Jupyter notebook for this section is available in <boxed><a href="https://github.com/siinn/InsightProject/blob/master/preprocessing.py">Data collection</a></boxed>.
+Source code for this section is available in <boxed><a href="https://github.com/siinn/InsightProject/blob/master/preprocessing.py">Data collection</a></boxed>.
 
 Data is collected by web scraping from [Medium.com](https://medium.com), and Python <verbatim>requests</verbatim> and <verbatim>BeautifulSoup</verbatim> libraries are used for web scraping and parsing the data. The web scraping jobs are parallelized so that the data collection can be done in short time. In order to handle failed request, it checks the status codes of request and attempt to retry after 3 seconds if it failed.
 
@@ -30,8 +30,6 @@ The following information is collected with time range between 2012 and present.
 
 
 ## Exploratory anlaysis
-Jupyter notebook for this section is available in <boxed><a href="https://github.com/siinn/Data-Science-Portfolio/blob/master/NYC-Rental-Prediction/notebook/data_visualization.ipynb">VISUALIZATION</a></boxed>.
-
 In this section, a quick exploratory analysis is performed in order to understand different features collected in the previous section.
 
 ### Number of articles
@@ -68,7 +66,7 @@ The most common keywords from the corpus is shown below.
 
 
 ## Machine Learning (Collaborative Filtering)
-Jupyter notebook for this section is available in <boxed><a href="https://github.com/siinn/InsightProject/blob/master/LFM_validation.py">MACHINE LEARNING</a></boxed>.
+Source code for this section is available in <boxed><a href="https://github.com/siinn/InsightProject/blob/master/LFM_validation.py">LFM</a></boxed>.
 
 The recommender system is built using <a href="https://github.com/lyst/lightfm">LightFM</a> model, an industrial standard collaborative filtering model. In this model, user comments are used as positive signals, i.e. based on the comments user left, the system would determine the best articles to recommend. LightFM model is used for the following reasons. More description of the model can be found in this <a href="https://arxiv.org/abs/1507.08439">paper</a>.
 
