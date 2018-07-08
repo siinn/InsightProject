@@ -111,7 +111,7 @@ app.layout = html.Div([
                 	            {"label": "data-science", "value": "data-science"},
                 	            {"label": "neural-networks", "value": "neural-networks"},
                 	        ],
-                	        value=['data-science'],
+                	        value=['data-science', 'machine-learning'],
                 	        clearable=False,
                 	        multi=True
                 	    ),
@@ -125,7 +125,7 @@ app.layout = html.Div([
 			    	        min_date_allowed=dt(2012, 1, 1),
 			    	        max_date_allowed=date.today(),
 			    	        initial_visible_month=date.today(),
-			    	        start_date= date.today() - timedelta(days=30),
+			    	        start_date= date.today() - timedelta(days=120),
 			    	        end_date= date.today(),
 			    	    ),
 			    	], style={'width':'45%', 'display': 'inline-block','vertical-align': 'top','padding': '10px 10px 10px 10px', 'vertical-align': 'top'}),
@@ -537,126 +537,229 @@ def t5_pred_title(user_df_json, page_number, start_date, end_date, topic):
 @app.callback(
     dash.dependencies.Output(component_id='t0_pred_link', component_property='href'),
     [Input(component_id='user_df', component_property='children'),
-     Input(component_id='page_number', component_property='children')]
+     Input(component_id='page_number', component_property='children'),
+     Input('my-date-picker-range', 'start_date'),
+     Input('my-date-picker-range', 'end_date'),
+     Input(component_id='topic', component_property='value'),
+     ]
 )
-def t0_pred_link(user_df_json, page_number):
+def t0_pred_link(user_df_json, page_number, start_date, end_date, topic):
+
+    start_date = parser.parse(start_date)
+    end_date = parser.parse(end_date)
 
     # rank
-    rank = 0 + max_article * (page_number-1)
+    rank = 0 + max_article * (page_number-page_correction)
 
     # convert stored json to dataframe
     df = pd.read_json(user_df_json, orient='split')
 
-    # retrieve prediction 0
-    article = df.iloc[rank]
+    # filter by date
+    df = df.loc[(df["post_time"] > start_date) & (df["post_time"] < end_date)]
 
-    # return article title with rank 0
+    # filter by topic
+    df = df.loc[df["topic"].apply(lambda x: x in topic)]
+
+    # retrieve prediction
+    if (len(df) > rank):
+        article = df.iloc[rank]
+
+    # retrieve prediction 0
     return article["link"]
+
+
 
 
 # recommendation link 1 (improved)
 @app.callback(
     dash.dependencies.Output(component_id='t1_pred_link', component_property='href'),
     [Input(component_id='user_df', component_property='children'),
-     Input(component_id='page_number', component_property='children')]
+     Input(component_id='page_number', component_property='children'),
+     Input('my-date-picker-range', 'start_date'),
+     Input('my-date-picker-range', 'end_date'),
+     Input(component_id='topic', component_property='value'),
+     ]
 )
-def t1_pred_link(user_df_json, page_number):
+def t1_pred_link(user_df_json, page_number, start_date, end_date, topic):
+
+    start_date = parser.parse(start_date)
+    end_date = parser.parse(end_date)
 
     # rank
-    rank = 1 + max_article * (page_number-1)
+    rank = 1 + max_article * (page_number-page_correction)
 
     # convert stored json to dataframe
     df = pd.read_json(user_df_json, orient='split')
 
-    # retrieve prediction 1
-    article = df.iloc[rank]
+    # filter by date
+    df = df.loc[(df["post_time"] > start_date) & (df["post_time"] < end_date)]
 
-    # return article title with rank 1
+    # filter by topic
+    df = df.loc[df["topic"].apply(lambda x: x in topic)]
+
+    # retrieve prediction
+    if (len(df) > rank):
+        article = df.iloc[rank]
+
+    # retrieve prediction 1
     return article["link"]
+
+
+
 
 
 # recommendation link 2 (improved)
 @app.callback(
     dash.dependencies.Output(component_id='t2_pred_link', component_property='href'),
     [Input(component_id='user_df', component_property='children'),
-     Input(component_id='page_number', component_property='children')]
+     Input(component_id='page_number', component_property='children'),
+     Input('my-date-picker-range', 'start_date'),
+     Input('my-date-picker-range', 'end_date'),
+     Input(component_id='topic', component_property='value'),
+     ]
 )
-def t2_pred_link(user_df_json, page_number):
+def t2_pred_link(user_df_json, page_number, start_date, end_date, topic):
+
+    start_date = parser.parse(start_date)
+    end_date = parser.parse(end_date)
 
     # rank
-    rank = 2 + max_article * (page_number-1)
+    rank = 2 + max_article * (page_number-page_correction)
 
     # convert stored json to dataframe
     df = pd.read_json(user_df_json, orient='split')
 
-    # retrieve prediction 2
-    article = df.iloc[rank]
+    # filter by date
+    df = df.loc[(df["post_time"] > start_date) & (df["post_time"] < end_date)]
 
-    # return article title with rank 2
+    # filter by topic
+    df = df.loc[df["topic"].apply(lambda x: x in topic)]
+
+    # retrieve prediction
+    if (len(df) > rank):
+        article = df.iloc[rank]
+
+    # retrieve prediction 2
     return article["link"]
+
+
+
+
 
 
 # recommendation link 3 (improved)
 @app.callback(
     dash.dependencies.Output(component_id='t3_pred_link', component_property='href'),
     [Input(component_id='user_df', component_property='children'),
-     Input(component_id='page_number', component_property='children')]
+     Input(component_id='page_number', component_property='children'),
+     Input('my-date-picker-range', 'start_date'),
+     Input('my-date-picker-range', 'end_date'),
+     Input(component_id='topic', component_property='value'),
+     ]
 )
-def t3_pred_link(user_df_json, page_number):
+def t3_pred_link(user_df_json, page_number, start_date, end_date, topic):
+
+    start_date = parser.parse(start_date)
+    end_date = parser.parse(end_date)
 
     # rank
-    rank = 3 + max_article * (page_number-1)
+    rank = 3 + max_article * (page_number-page_correction)
 
     # convert stored json to dataframe
     df = pd.read_json(user_df_json, orient='split')
 
-    # retrieve prediction 3
-    article = df.iloc[rank]
+    # filter by date
+    df = df.loc[(df["post_time"] > start_date) & (df["post_time"] < end_date)]
 
-    # return article title with rank 3
+    # filter by topic
+    df = df.loc[df["topic"].apply(lambda x: x in topic)]
+
+    # retrieve prediction
+    if (len(df) > rank):
+        article = df.iloc[rank]
+
+    # retrieve prediction 3
     return article["link"]
+
+
+
+
 
 
 # recommendation link 4 (improved)
 @app.callback(
     dash.dependencies.Output(component_id='t4_pred_link', component_property='href'),
     [Input(component_id='user_df', component_property='children'),
-     Input(component_id='page_number', component_property='children')]
+     Input(component_id='page_number', component_property='children'),
+     Input('my-date-picker-range', 'start_date'),
+     Input('my-date-picker-range', 'end_date'),
+     Input(component_id='topic', component_property='value'),
+     ]
 )
-def t4_pred_link(user_df_json, page_number):
+def t4_pred_link(user_df_json, page_number, start_date, end_date, topic):
+
+    start_date = parser.parse(start_date)
+    end_date = parser.parse(end_date)
 
     # rank
-    rank = 4 + max_article * (page_number-1)
+    rank = 4 + max_article * (page_number-page_correction)
 
     # convert stored json to dataframe
     df = pd.read_json(user_df_json, orient='split')
 
-    # retrieve prediction 4
-    article = df.iloc[rank]
+    # filter by date
+    df = df.loc[(df["post_time"] > start_date) & (df["post_time"] < end_date)]
 
-    # return article title with rank 4
+    # filter by topic
+    df = df.loc[df["topic"].apply(lambda x: x in topic)]
+
+    # retrieve prediction
+    if (len(df) > rank):
+        article = df.iloc[rank]
+
+    # retrieve prediction 4
     return article["link"]
+
+
+
 
 
 # recommendation link 5 (improved)
 @app.callback(
     dash.dependencies.Output(component_id='t5_pred_link', component_property='href'),
     [Input(component_id='user_df', component_property='children'),
-     Input(component_id='page_number', component_property='children')]
+     Input(component_id='page_number', component_property='children'),
+     Input('my-date-picker-range', 'start_date'),
+     Input('my-date-picker-range', 'end_date'),
+     Input(component_id='topic', component_property='value'),
+     ]
 )
-def t5_pred_link(user_df_json, page_number):
+def t5_pred_link(user_df_json, page_number, start_date, end_date, topic):
+
+    start_date = parser.parse(start_date)
+    end_date = parser.parse(end_date)
 
     # rank
-    rank = 5 + max_article * (page_number-1)
+    rank = 5 + max_article * (page_number-page_correction)
 
     # convert stored json to dataframe
     df = pd.read_json(user_df_json, orient='split')
 
-    # retrieve prediction 5
-    article = df.iloc[rank]
+    # filter by date
+    df = df.loc[(df["post_time"] > start_date) & (df["post_time"] < end_date)]
 
-    # return article title with rank 5
+    # filter by topic
+    df = df.loc[df["topic"].apply(lambda x: x in topic)]
+
+    # retrieve prediction
+    if (len(df) > rank):
+        article = df.iloc[rank]
+
+    # retrieve prediction 5
     return article["link"]
+
+
+
 
 
 
