@@ -22,6 +22,7 @@ import pytz
 
 # local path for data
 local_data = "/home/ubuntu/InsightProject/"
+#local_data = "/Users/sche/Documents/data_science/insight/medium_recommendation/"
 
 # load dataset
 df_user = read_data("user_detail_medium")
@@ -51,6 +52,7 @@ last_update = "Model built on " + last_update
 
 # set number of articles to display per page
 max_article = 6
+page_correction = 1
 
 # create app
 application = flask.Flask(__name__)
@@ -109,7 +111,7 @@ app.layout = html.Div([
                 	            {"label": "data-science", "value": "data-science"},
                 	            {"label": "neural-networks", "value": "neural-networks"},
                 	        ],
-                	        value=['data-science', 'machine-learning', 'deep-learning'],
+                	        value=['data-science'],
                 	        clearable=False,
                 	        multi=True
                 	    ),
@@ -133,17 +135,6 @@ app.layout = html.Div([
 						html.Details([
 							html.Summary('Advanced options'),
 
-                		# user name input box
-                		html.Div([
-                		    html.Label('Tell me about yourself'),
-							dcc.Textarea(
-                		        id='user_description',
-							    placeholder='Please describe yourself. "I am a happy data scientist in New York. I love to wrangle with data all day!"',
-							    value='',
-							    style={'width': '100%'}
-							)
-                		], style={'width':'45%','display': 'inline-block','padding': '10px 10px 10px 10px', 'vertical-align': 'top'}),
-
 						# user feature selection
                 		html.Div([
                 		    html.Label('What describes you the best?'),
@@ -153,10 +144,10 @@ app.layout = html.Div([
 							    #labelStyle={'display': 'inline-block', 'padding': '0px 10px 0px 10px',}
                 	            multi=True
 							)
-                		], style={'width':'45%','display': 'inline-block','padding': '10px 10px 10px 10px', 'vertical-align': 'top'}),
+                		], style={'width':'45%','display': 'none','padding': '10px 10px 10px 10px', 'vertical-align': 'top'}),
 
 						])
-                	], style={'width':'79%','display': 'inline-block','padding': '10px 0px 0px 10px', 'vertical-align': 'top'}),
+                	], style={'width':'79%','display': 'none','padding': '10px 0px 0px 10px', 'vertical-align': 'top'}),
 
 				# end of rightside panel
                 ], style={'width':'70%','display': 'inline-block','padding': '0px 0px 0px 0px', 'vertical-align': 'top'}),
@@ -234,36 +225,18 @@ def set_page_number(n_next_page, n_prev_page):
 # set user based on user description and feature dropdown menu
 @app.callback(
     Output(component_id='user_hypo', component_property='children'),
-    [Input(component_id='user_description', component_property='value'),
-    Input(component_id='user_feature', component_property='value'),]
+    [Input(component_id='user_feature', component_property='value'),]
 )
-def set_user(user_description, user_feature):
+def set_user(user_feature):
 
     users_hypo = []
     
-    # if there is no user description, use feature dropdown menu to select hypothetical user
-    if (user_description == ""):
-        for index_feature, feature in enumerate(user_feature_names):    # loop over user features from pickle
-            if (feature in user_feature):                              
-                users_hypo.append(str(index_feature))
-    
-    # return list of hypothetical users this user matched to	
-    else:	
-        for index_feature, feature in enumerate(user_feature_names):    # loop over user features from pickle
-        	if (feature.replace("_", " ") in user_description):
-        		users_hypo.append(str(index_feature))
+    # use feature dropdown menu to select hypothetical user
+    for index_feature, feature in enumerate(user_feature_names):    # loop over user features from pickle
+        if (feature in user_feature):                              
+            users_hypo.append(str(index_feature))
     
     return users_hypo
-
-
-# fill check list from user features
-@app.callback(
-	Output('user_feature', 'options'),
-	[Input(component_id='user_description', component_property='value')]
-	)
-def fillChecklist(input):
-    return [{'label': x.replace("_", " "), 'value' : x} for x in user_feature_names]
-
 
 #---------------------------------------------
 # callback function for combined article info
@@ -320,22 +293,23 @@ def create_dataframe(users):
 # callback function for recommendations (title)
 #---------------------------------------------
 
-# recommendation title 0 (improved)
+# recommendation title 0
 @app.callback(
     dash.dependencies.Output(component_id='t0_pred_link', component_property='children'),
     [Input(component_id='user_df', component_property='children'),
      Input(component_id='page_number', component_property='children'),
      Input('my-date-picker-range', 'start_date'),
      Input('my-date-picker-range', 'end_date'),
+     Input(component_id='topic', component_property='value'),
      ]
 )
-def t0_pred_title(user_df_json, page_number, start_date, end_date):
+def t0_pred_title(user_df_json, page_number, start_date, end_date, topic):
 
     start_date = parser.parse(start_date)
     end_date = parser.parse(end_date)
 
     # rank
-    rank = 0 + max_article * (page_number-1)
+    rank = 0 + max_article * (page_number-page_correction)
 
     # convert stored json to dataframe
     df = pd.read_json(user_df_json, orient='split')
@@ -343,119 +317,217 @@ def t0_pred_title(user_df_json, page_number, start_date, end_date):
     # filter by date
     df = df.loc[(df["post_time"] > start_date) & (df["post_time"] < end_date)]
 
+    # filter by topic
+    df = df.loc[df["topic"].apply(lambda x: x in topic)]
+
     # retrieve prediction 0
     if (len(df) > rank):
         article = df.iloc[rank]
 
         # return article title with rank 0
-        return article["title"] + "\n %s response, %s claps)" % (article["response"], article["claps"])
+        return article["title"] + ", %s (%s response, %s claps)" % (article["post_time"].strftime("%B %d, %Y"), article["response"], article["claps"])
 
     else:
-        return ""
+        return "No article available that matches your selection"
 
-# recommendation title 1 (improved)
+
+
+# recommendation title 1
 @app.callback(
     dash.dependencies.Output(component_id='t1_pred_link', component_property='children'),
     [Input(component_id='user_df', component_property='children'),
-     Input(component_id='page_number', component_property='children')]
+     Input(component_id='page_number', component_property='children'),
+     Input('my-date-picker-range', 'start_date'),
+     Input('my-date-picker-range', 'end_date'),
+     Input(component_id='topic', component_property='value'),
+     ]
 )
-def t1_pred_title(user_df_json, page_number):
+def t1_pred_title(user_df_json, page_number, start_date, end_date, topic):
+
+    start_date = parser.parse(start_date)
+    end_date = parser.parse(end_date)
 
     # rank
-    rank = 1 + max_article * (page_number-1)
+    rank = 1 + max_article * (page_number-page_correction)
 
     # convert stored json to dataframe
     df = pd.read_json(user_df_json, orient='split')
-    
+
+    # filter by date
+    df = df.loc[(df["post_time"] > start_date) & (df["post_time"] < end_date)]
+
+    # filter by topic
+    df = df.loc[df["topic"].apply(lambda x: x in topic)]
+
     # retrieve prediction 1
-    article = df.iloc[rank]
+    if (len(df) > rank):
+        article = df.iloc[rank]
 
-    # return article title with rank 1
-    return article["title"] + " (%s response, %s claps)" % (article["response"], article["claps"])
+        # return article title with rank 1
+        return article["title"] + ", %s (%s response, %s claps)" % (article["post_time"].strftime("%B %d, %Y"), article["response"], article["claps"])
+
+    else:
+        return "No article available that matches your selection"
 
 
 
 
-# recommendation title 2 (improved)
+# recommendation title 2
 @app.callback(
     dash.dependencies.Output(component_id='t2_pred_link', component_property='children'),
     [Input(component_id='user_df', component_property='children'),
-     Input(component_id='page_number', component_property='children')]
+     Input(component_id='page_number', component_property='children'),
+     Input('my-date-picker-range', 'start_date'),
+     Input('my-date-picker-range', 'end_date'),
+     Input(component_id='topic', component_property='value'),
+     ]
 )
-def t2_pred_title(user_df_json, page_number):
+def t2_pred_title(user_df_json, page_number, start_date, end_date, topic):
+
+    start_date = parser.parse(start_date)
+    end_date = parser.parse(end_date)
 
     # rank
-    rank = 2 + max_article * (page_number-1)
+    rank = 2 + max_article * (page_number-page_correction)
 
     # convert stored json to dataframe
     df = pd.read_json(user_df_json, orient='split')
-    
+
+    # filter by date
+    df = df.loc[(df["post_time"] > start_date) & (df["post_time"] < end_date)]
+
+    # filter by topic
+    df = df.loc[df["topic"].apply(lambda x: x in topic)]
+
     # retrieve prediction 2
-    article = df.iloc[rank]
+    if (len(df) > rank):
+        article = df.iloc[rank]
 
-    # return article title with rank 2
-    return article["title"] + " (%s response, %s claps)" % (article["response"], article["claps"])
+        # return article title with rank 2
+        return article["title"] + ", %s (%s response, %s claps)" % (article["post_time"].strftime("%B %d, %Y"), article["response"], article["claps"])
+
+    else:
+        return "No article available that matches your selection"
 
 
-# recommendation title 3 (improved)
+
+
+# recommendation title 3
 @app.callback(
     dash.dependencies.Output(component_id='t3_pred_link', component_property='children'),
     [Input(component_id='user_df', component_property='children'),
-     Input(component_id='page_number', component_property='children')]
+     Input(component_id='page_number', component_property='children'),
+     Input('my-date-picker-range', 'start_date'),
+     Input('my-date-picker-range', 'end_date'),
+     Input(component_id='topic', component_property='value'),
+     ]
 )
-def t3_pred_title(user_df_json, page_number):
+def t3_pred_title(user_df_json, page_number, start_date, end_date, topic):
+
+    start_date = parser.parse(start_date)
+    end_date = parser.parse(end_date)
 
     # rank
-    rank = 3 + max_article * (page_number-1)
+    rank = 3 + max_article * (page_number-page_correction)
 
     # convert stored json to dataframe
     df = pd.read_json(user_df_json, orient='split')
-    
+
+    # filter by date
+    df = df.loc[(df["post_time"] > start_date) & (df["post_time"] < end_date)]
+
+    # filter by topic
+    df = df.loc[df["topic"].apply(lambda x: x in topic)]
+
     # retrieve prediction 3
-    article = df.iloc[rank]
+    if (len(df) > rank):
+        article = df.iloc[rank]
 
-    # return article title with rank 3
-    return article["title"] + " (%s response, %s claps)" % (article["response"], article["claps"])
+        # return article title with rank 3
+        return article["title"] + ", %s (%s response, %s claps)" % (article["post_time"].strftime("%B %d, %Y"), article["response"], article["claps"])
 
-# recommendation title 4 (improved)
+    else:
+        return "No article available that matches your selection"
+
+
+
+
+# recommendation title 4
 @app.callback(
     dash.dependencies.Output(component_id='t4_pred_link', component_property='children'),
     [Input(component_id='user_df', component_property='children'),
-     Input(component_id='page_number', component_property='children')]
+     Input(component_id='page_number', component_property='children'),
+     Input('my-date-picker-range', 'start_date'),
+     Input('my-date-picker-range', 'end_date'),
+     Input(component_id='topic', component_property='value'),
+     ]
 )
-def t4_pred_title(user_df_json, page_number):
+def t4_pred_title(user_df_json, page_number, start_date, end_date, topic):
+
+    start_date = parser.parse(start_date)
+    end_date = parser.parse(end_date)
 
     # rank
-    rank = 4 + max_article * (page_number-1)
+    rank = 4 + max_article * (page_number-page_correction)
 
     # convert stored json to dataframe
     df = pd.read_json(user_df_json, orient='split')
-    
+
+    # filter by date
+    df = df.loc[(df["post_time"] > start_date) & (df["post_time"] < end_date)]
+
+    # filter by topic
+    df = df.loc[df["topic"].apply(lambda x: x in topic)]
+
     # retrieve prediction 4
-    article = df.iloc[rank]
+    if (len(df) > rank):
+        article = df.iloc[rank]
 
-    # return article title with rank 4
-    return article["title"] + " (%s response, %s claps)" % (article["response"], article["claps"])
+        # return article title with rank 4
+        return article["title"] + ", %s (%s response, %s claps)" % (article["post_time"].strftime("%B %d, %Y"), article["response"], article["claps"])
 
-# recommendation title 5 (improved)
+    else:
+        return "No article available that matches your selection"
+
+
+
+# recommendation title 5
 @app.callback(
     dash.dependencies.Output(component_id='t5_pred_link', component_property='children'),
     [Input(component_id='user_df', component_property='children'),
-     Input(component_id='page_number', component_property='children')]
+     Input(component_id='page_number', component_property='children'),
+     Input('my-date-picker-range', 'start_date'),
+     Input('my-date-picker-range', 'end_date'),
+     Input(component_id='topic', component_property='value'),
+     ]
 )
-def t5_pred_title(user_df_json, page_number):
+def t5_pred_title(user_df_json, page_number, start_date, end_date, topic):
+
+    start_date = parser.parse(start_date)
+    end_date = parser.parse(end_date)
 
     # rank
-    rank = 5 + max_article * (page_number-1)
+    rank = 5 + max_article * (page_number-page_correction)
 
     # convert stored json to dataframe
     df = pd.read_json(user_df_json, orient='split')
-    
-    # retrieve prediction 5
-    article = df.iloc[rank]
 
-    # return article title with rank 5
-    return article["title"] + " (%s response, %s claps)" % (article["response"], article["claps"])
+    # filter by date
+    df = df.loc[(df["post_time"] > start_date) & (df["post_time"] < end_date)]
+
+    # filter by topic
+    df = df.loc[df["topic"].apply(lambda x: x in topic)]
+
+    # retrieve prediction 5
+    if (len(df) > rank):
+        article = df.iloc[rank]
+
+        # return article title with rank 5
+        return article["title"] + ", %s (%s response, %s claps)" % (article["post_time"].strftime("%B %d, %Y"), article["response"], article["claps"])
+
+    else:
+        return "No article available that matches your selection"
+
 
 #---------------------------------------------
 # callback function for recommendations (link)
