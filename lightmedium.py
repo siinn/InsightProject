@@ -6,15 +6,22 @@ import dash_html_components as html
 import os, glob, base64
 import pandas as pd
 from read_data import read_data
-from dash_get_articles import get_article_info
 import json
 from datetime import datetime as dt
+from datetime import date
+from datetime import timedelta
+import bz2
 import pickle
+from dateutil import parser
 from collections import defaultdict
+import pytz
 
 #---------------------------------------------
 # load global data
 #---------------------------------------------
+
+# local path for data
+local_data = "/home/ubuntu/lightmedium/"
 
 # load dataset
 df_user = read_data("user_detail_medium")
@@ -23,13 +30,16 @@ df_articles= read_data("list_articles")
 # remove duplicates
 df_articles = df_articles.drop_duplicates(subset=["post_id"], keep="first")
 
+# convert string to datetime
+df_articles["post_time"] = df_articles["post_time"].apply(parser.parse)
+
 # load pickled user names
-p = open('data/pickle/user_feature_names','rb')
+p = bz2.BZ2File(local_data+'data/pickle/user_feature_names','rb')
 user_feature_names = pickle.load(p)
 p.close()
 
 # load pickled prediction for hypothetical user
-p = open('data/pickle/prediction_hypo','rb')
+p = bz2.BZ2File(local_data+'data/pickle/prediction_hypo','rb')
 prediction_hypo = pickle.load(p, encoding='latin1')
 p.close()
 
@@ -48,6 +58,7 @@ app = dash.Dash(__name__, static_folder='static', server=application)
 
 # goverment/health theme
 app.css.append_css({'external_url': 'https://codepen.io/plotly/pen/EQZeaW.css'})
+app.title='Warm Welcome to Medium'
 
 # custoom local image
 image_filename = 'static/new-york-city-H.jpeg'
@@ -61,8 +72,7 @@ app.layout = html.Div([
 
         # header image
         html.Div([
-            #html.Img(src='data:image/png;base64,{}'.format(encoded_image.decode()), width="100%", style={'display':'block'}),
-            #html.Img(src='data:image/png;base64,{}'.format(encoded_image.decode()), width="100%", style={'display':'block'}),
+            html.Img(src='data:image/png;base64,{}'.format(encoded_image.decode()), width="100%", style={'display':'block'}),
         ], style={'width':'100%','display': 'inline-block','padding': '0px 0px 0px 0px', 'vertical-align': 'top'}),
 
         # main content
@@ -85,23 +95,6 @@ app.layout = html.Div([
                     html.H6(last_update)
                 ], style={'width':'30%','display': 'inline-block','padding': '0px 0px 0px 0px', 'vertical-align': 'top'}),
 		
-
-                # user names: to be deleted
-                html.Div([
-                    html.Label('Select user'),
-                    dcc.Dropdown(
-                        id='selected_user',
-                        options=[
-                            {'label': 'Ruslan Nikolaev', 'value': 'ed47957c7bbd'},
-                            {'label': 'Kerry Benjamin', 'value': '78ff5a2855cb'},
-                            {'label': 'Beau Gordon', 'value': '8a5d3f4a4655'},
-                            {'label': 'Tarık Uygun', 'value': '29d86acdab2b'},
-                            {'label': 'MINIMAL', 'value': 'd3e12cffc59a'}
-                        ],
-                        value='ed47957c7bbd',
-                    ),
-                #], style={'width':'200px', 'display': 'inline-block','padding': '10px 0px 10x 0px', 'vertical-align': 'top'}),
-                ], style={'width':'200px', 'display': 'none','padding': '10px 0px 10x 0px', 'vertical-align': 'top'}),
 
 				# rightside of top panel
                 html.Div([
@@ -127,10 +120,11 @@ app.layout = html.Div([
                 	    html.Label('Choose dates'),
 			    	    dcc.DatePickerRange(
 			    	        id='my-date-picker-range',
-			    	        min_date_allowed=dt(1995, 8, 5),
-			    	        max_date_allowed=dt(2017, 9, 19),
-			    	        initial_visible_month=dt(2017, 8, 5),
-			    	        end_date=dt(2017, 8, 25)
+			    	        min_date_allowed=dt(2012, 1, 1),
+			    	        max_date_allowed=date.today(),
+			    	        initial_visible_month=date.today(),
+			    	        start_date= date.today() - timedelta(days=30),
+			    	        end_date= date.today(),
 			    	    ),
 			    	], style={'width':'45%', 'display': 'inline-block','vertical-align': 'top','padding': '10px 10px 10px 10px', 'vertical-align': 'top'}),
 
@@ -330,9 +324,15 @@ def create_dataframe(users):
 @app.callback(
     dash.dependencies.Output(component_id='t0_pred_link', component_property='children'),
     [Input(component_id='user_df', component_property='children'),
-     Input(component_id='page_number', component_property='children')]
+     Input(component_id='page_number', component_property='children'),
+     Input('my-date-picker-range', 'start_date'),
+     Input('my-date-picker-range', 'end_date'),
+     ]
 )
-def t0_pred_title(user_df_json, page_number):
+def t0_pred_title(user_df_json, page_number, start_date, end_date):
+
+    start_date = parser.parse(start_date)
+    end_date = parser.parse(end_date)
 
     # rank
     rank = 0 + max_article * (page_number-1)
@@ -340,12 +340,18 @@ def t0_pred_title(user_df_json, page_number):
     # convert stored json to dataframe
     df = pd.read_json(user_df_json, orient='split')
 
+    # filter by date
+    df = df.loc[(df["post_time"] > start_date) & (df["post_time"] < end_date)]
+
     # retrieve prediction 0
-    article = df.iloc[rank]
+    if (len(df) > rank):
+        article = df.iloc[rank]
 
-    # return article title with rank 0
-    return article["title"] + " (%s response, %s claps)" % (article["response"], article["claps"])
+        # return article title with rank 0
+        return article["title"] + "\n %s response, %s claps)" % (article["response"], article["claps"])
 
+    else:
+        return ""
 
 # recommendation title 1 (improved)
 @app.callback(

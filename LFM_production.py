@@ -10,8 +10,9 @@ import multiprocessing
 from functools import partial
 import numpy as np
 import pandas as pd
-import pickle
 from scipy import sparse
+import bz2
+import cPickle as pickle
 
 
 #--------------------------------------
@@ -21,6 +22,10 @@ PrepareData     = True
 TrainModel      = True
 PickleModel     = True
 
+
+
+# local path for data
+local_data = "/home/ubuntu/lightmedium/"
 #--------------------------------------
 
 
@@ -31,18 +36,18 @@ def prepare_data():
     df = df.drop_duplicates(subset=["post_id","user_id"])               # remove duplicated entries
     columns_title=["user_id","post_id","comment"]                       # rearrange columns
     df=df.reindex(columns=columns_title)
-    df.to_csv("data/model_input/df.csv", sep="\t", index=False)         # convert dataframe to tab deliminated file
+    df.to_csv(local_data + "data/model_input/df.csv", sep="\t", index=False)         # convert dataframe to tab deliminated file
     return
 
 # get tab-delimited data
 def get_data():
 
-    return csv.DictReader((x.decode("utf-8", "ignore") for x in open("data/model_input/df.csv")), delimiter="\t")
+    return csv.DictReader((x.decode("utf-8", "ignore") for x in open(local_data + "data/model_input/df.csv")), delimiter="\t")
 
 # get tab-delimited train data
 def get_train_data():
 
-    return csv.DictReader((x.decode("utf-8", "ignore") for x in open("data/model_input/df_train.csv")), delimiter="\t")
+    return csv.DictReader((x.decode("utf-8", "ignore") for x in open(local_data + "data/model_input/df_train.csv")), delimiter="\t")
 
 # convert list to dictionary
 def list_to_dict(keywords):
@@ -135,26 +140,31 @@ def train_model():
         prediction_hypo.append(prediction_sorted)
 
 
-    return prediction_hypo, prediction_ws, user_id_map, item_id_map
+    return prediction_hypo, prediction_ws, user_id_map, item_id_map, user_feature_names
 
-def pickle_model(prediction_hypo, prediction_ws, user_id_map, item_id_map):
+def pickle_model(prediction_hypo, prediction_ws, user_id_map, item_id_map, user_feature_names):
 
         # pickle user, item to id map
-        f = open('data/pickle/user_id_map','wb')
+        f = bz2.BZ2File(local_data + 'data/pickle/user_id_map','wb')
         pickle.dump(user_id_map,f)
         f.close()
         
-        f = open('data/pickle/item_id_map','wb')
+        f = bz2.BZ2File(local_data + 'data/pickle/item_id_map','wb')
         pickle.dump(item_id_map,f)
+        f.close()
+       
+        # user feature names
+        f = bz2.BZ2File(local_data + 'data/pickle/user_feature_names','wb')
+        pickle.dump(user_feature_names,f)
         f.close()
         
         # pickle warm start
-        f = open('data/pickle/prediction_ws','wb')
+        f = bz2.BZ2File(local_data + 'data/pickle/prediction_ws','wb')
         pickle.dump(prediction_ws,f)
         f.close()
 
         # pickle hypothetical users
-        f = open('data/pickle/prediction_hypo','wb')
+        f = bz2.BZ2File(local_data + 'data/pickle/prediction_hypo','wb')
         pickle.dump(prediction_hypo,f)
         f.close()
 
@@ -167,16 +177,16 @@ if __name__ == "__main__":
 
     # train model and make predictions
     if(TrainModel):
-        prediction_hypo, prediction_ws, user_id_map, item_id_map = train_model()
+        prediction_hypo, prediction_ws, user_id_map, item_id_map, user_feature_names = train_model()
 
     # pickle prediction for production
     if(PickleModel):
-        pickle_model(prediction_hypo, prediction_ws, user_id_map, item_id_map)
+        pickle_model(prediction_hypo, prediction_ws, user_id_map, item_id_map, user_feature_names)
 
     # write to log for pipeline monitoring
-    with open("log", "a") as log:
-        log.write("\nStep 5. Successfully built a new model")
+    with open(local_data + "log", "a") as log:
+        log.write("\nStep 5. Successfully built a new model on %s" %str(date.today()))
 
-    with open("log_model_update", "a") as log:
-        log.write("\nLast update: %s" % str(date.today()))
+    with open(local_data + "log_model_update", "a") as log:
+        log.write("\n%s" % str(date.today()))
 
