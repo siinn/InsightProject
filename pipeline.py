@@ -43,6 +43,8 @@ DecorateGroup       = True
 ExtractMostCommon   = False # not part of regular update
 
 
+# local data path
+local_data = "/home/ubuntu/InsightProject/"
 
 
 # url for MEDIUM
@@ -238,7 +240,7 @@ def download_article_list(sdy, sdm, sdd, edy, edm, edd):
                     time.sleep(3)
 
     # save dataframe
-    df.to_csv("data/list_articles/articles_%s-%s.csv" %(sd, ed), encoding='utf-8', index=False)
+    df.to_csv(local_data+"data/list_articles/articles_%s-%s.csv" %(sd, ed), encoding='utf-8', index=False)
     print("Successfully scraped articles!")
 
     # write to log for pipeline monitoring
@@ -255,7 +257,7 @@ def get_user_responses(sdy, sdm, sdd, edy, edm, edd):
     ed = date(edy, edm, edd)
 
     # read csv for given date range
-    df_article = pd.read_csv("data/list_articles/articles_%s-%s.csv" %(sd, ed))
+    df_article = pd.read_csv(local_data+"data/list_articles/articles_%s-%s.csv" %(sd, ed))
     
     # drop duplicates
     df_article = df_article.drop_duplicates(subset=["post_id"], keep="first")
@@ -277,7 +279,7 @@ def get_user_responses(sdy, sdm, sdd, edy, edm, edd):
         df_user = df_user.append(pd.DataFrame([{"user_id":response_user_id, "post_id":post_id}]))
     
     # save to csv
-    df_user.to_csv("data/response/users_response_%s-%s.csv" % (sd, ed), encoding='utf-8', index=False)
+    df_user.to_csv(local_data+"data/response/users_response_%s-%s.csv" % (sd, ed), encoding='utf-8', index=False)
 
     print("Successfully retrieved responses for dates between %s-%s" % (sd, ed))
 
@@ -298,7 +300,7 @@ def get_user_information(sdy, sdm, sdd, edy, edm, edd):
     print("Getting user information for dates %s-%s" % (sd, ed))
 
     # read csv for given date range
-    df = pd.read_csv("data/response/users_response_%s-%s.csv" %(sd, ed))
+    df = pd.read_csv(local_data+"data/response/users_response_%s-%s.csv" %(sd, ed))
 
     # merge rows of same user
     df = df.groupby(["user_id"]).agg({"post_id":lambda x: ', '.join(x)})
@@ -310,7 +312,7 @@ def get_user_information(sdy, sdm, sdd, edy, edm, edd):
     df["userinfo"] = df["user_id"].apply(get_userinfo)
     
     # save to csv
-    df.to_csv("data/user_detail/users_%s-%s.csv" % (sd, ed), encoding='utf-8', index=False)
+    df.to_csv(local_data+"data/user_detail/users_%s-%s.csv" % (sd, ed), encoding='utf-8', index=False)
 
     print("Successfully retrieved user information for dates %s-%s" % (sd, ed))
 
@@ -363,7 +365,7 @@ def extract_most_common_keywords():
     keywords_most_common = collections.Counter(keywords_most_common).most_common(20)
 
     # save most common keywords for visualization
-    pd.DataFrame.from_dict(dict(keywords_most_common), orient="index").to_csv("data/keywords/df.csv")
+    pd.DataFrame.from_dict(dict(keywords_most_common), orient="index").to_csv(local_data+"data/keywords/df.csv")
 
     # save to csv
     print("Successfully extracted most common keywords from user profiles")
@@ -377,7 +379,7 @@ def decorate_group(sdy, sdm, sdd, edy, edm, edd):
     ed = date(edy, edm, edd)
 
     # read dataframe containing detailed user information
-    df = pd.read_csv("data/user_detail/users_%s-%s.csv" % (sd, ed))
+    df = pd.read_csv(local_data+"data/user_detail/users_%s-%s.csv" % (sd, ed))
 
     # method used for user classification
     method = "medium"
@@ -424,7 +426,7 @@ def decorate_group(sdy, sdm, sdd, edy, edm, edd):
     df["keyword"] = df["bio"].apply(trim_bio)
 
     # save to csv
-    df.to_csv("data/user_detail_medium/df_%s-%s.csv" % (sd, ed), encoding='utf-8', index=False)
+    df.to_csv(local_data+"data/user_detail_medium/df_%s-%s.csv" % (sd, ed), encoding='utf-8', index=False)
     print("Successfully decorated dataframe with user group")
 
     # write to log for pipeline monitoring
@@ -473,19 +475,8 @@ def trim_bio(text):
     # keywords to return
     keywords = []
 
-    ## define important words
-    #important_words = [ ["data", "science"],
-    #                    ["data", "scientist"],
-    #                    ["machine", "learning"],
-    #                    ["data", "engineer"],
-    #                    ["data", "analytics"],
-    #                    ["artificial", "intelligence"],
-    #                    ["ai"], ["phd"], ["founder"], ["professor"],["candidate"],["ceo"],
-    #                    ["student"], ["engineer"], ["computer", "science"]
-    #                    ]
- 
     # load from file after custom edit
-    df_keyword = pd.read_csv("data/keywords/df.csv")
+    df_keyword = pd.read_csv(local_data+"data/keywords/df.csv")
 
     ## convert df to list
     important_words=df_keyword["Unnamed: 0"].tolist()
