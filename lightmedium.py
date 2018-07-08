@@ -21,7 +21,7 @@ import pytz
 #---------------------------------------------
 
 # local path for data
-local_data = "/home/ubuntu/lightmedium/"
+local_data = "/home/ubuntu/InsightProject/"
 
 # load dataset
 df_user = read_data("user_detail_medium")

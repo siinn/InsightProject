@@ -25,7 +25,7 @@ PickleModel     = True
 
 
 # local path for data
-local_data = "/home/ubuntu/lightmedium/"
+local_data = "/home/ubuntu/InsightProject/"
 #--------------------------------------
 
 
